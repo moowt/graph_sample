@@ -42,6 +42,10 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
    - **サポートされているアカウントの種類**:
      「**任意の組織ディレクトリ内のアカウントと個人用 Microsoft アカウント**」
      (これで個人・企業の両方で同じアプリ登録を使えます)
+   - 作成済みのアプリを「この組織ディレクトリのみ」から変更する場合、
+     `Property api.requestedAccessTokenVersion is invalid` で保存できないことがあります。
+     先に **マニフェスト** の `"requestedAccessTokenVersion": null` を `2` に変えて保存してから、
+     アカウントの種類を変更してください。
    - リダイレクト URI: 不要
 3. 作成後、**認証** (Authentication) → 詳細設定 → **パブリック クライアント フローを許可する** を「**はい**」にして保存
    (デバイスコードフローに必須)
@@ -153,6 +157,7 @@ tenant.id=<企業テナントID>
 | `AADSTS700016` / `AADSTS700038` | `client.id` の誤り、またはテナントにアプリが存在しない |
 | `AADSTS7000218` | 「パブリック クライアント フローを許可する」が「いいえ」のまま |
 | `AADSTS50020` など (アカウントがテナントに存在しない) | アカウントの種類が個人アカウント非対応、または `tenant.id` の誤り (個人は `consumers`) |
+| `AADSTS700016` (`tenant.id=consumers` 時) | アプリが個人アカウント非対応 (アカウントの種類が「この組織ディレクトリのみ」) |
 | `AADSTS65001` | 同意が未実施。企業テナントでは管理者の同意が必要な場合あり |
 | Graph API エラー `403 ErrorAccessDenied` | `Mail.Read` が未付与 / 同意されていない |
 | Graph API エラー `MailboxNotEnabledForRESTAPI` | 対象アカウントに Outlook/Exchange Online メールボックスが無い |
