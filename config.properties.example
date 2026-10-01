@@ -1,0 +1,24 @@
+# ============================================================
+# Graph メール取得サンプル 設定ファイル
+#   このファイルを config.properties にコピーして値を設定してください。
+#   config.properties は .gitignore 済みです(コミットしないこと)。
+# ============================================================
+
+# 認証モード
+#   device-code   : 委任アクセス。ユーザーがブラウザでサインインする(個人アカウントはこちらのみ)
+#   client-secret : アプリケーションアクセス。サインイン不要(企業テナント専用・管理者同意が必要)
+auth.mode=device-code
+
+# Entra ID アプリ登録の「アプリケーション (クライアント) ID」
+client.id=00000000-0000-0000-0000-000000000000
+
+# テナント
+#   個人の Microsoft アカウント (outlook.com / hotmail.com 等) : consumers
+#   企業アカウント (device-code)                             : テナント ID または organizations
+#   企業アカウント (client-secret)                           : テナント ID (必須)
+tenant.id=consumers
+
+# ---- client-secret モードのみ使用 ----
+# client.secret=
+# 取得対象のメールボックス (UPN またはユーザー ID)
+# target.user=user@contoso.com
