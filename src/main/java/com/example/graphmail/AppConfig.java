@@ -61,6 +61,14 @@ public record AppConfig(AuthMode authMode, String clientId, String tenantId,
         return new AppConfig(mode, clientId, tenantId, clientSecret, targetUser);
     }
 
+    /** 取得対象のメールボックスを差し替えたコピーを返す (client-secret モードのみ)。 */
+    public AppConfig withTargetUser(String user) {
+        if (authMode != AuthMode.CLIENT_SECRET) {
+            throw new IllegalArgumentException("--user は client-secret モードでのみ指定できます。");
+        }
+        return new AppConfig(authMode, clientId, tenantId, clientSecret, user);
+    }
+
     private static boolean isConsumerOrMultiTenant(String tenantId) {
         return tenantId.equalsIgnoreCase("consumers")
                 || tenantId.equalsIgnoreCase("common")

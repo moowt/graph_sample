@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
  *   --top N              取得件数 (1〜100)
  *   --folder NAME        フォルダー (inbox, sentitems, drafts, deleteditems, archive, junkemail またはフォルダー ID)
  *   --id MESSAGE_ID      指定メッセージの本文を表示
+ *   --user UPN           取得対象のメールボックス (client-secret モードのみ。target.user を上書き)
  *   --config PATH        設定ファイル (既定: ./config.properties)
  * </pre>
  */
@@ -32,6 +33,9 @@ public final class App {
         try {
             Options options = Options.parse(args);
             AppConfig config = AppConfig.load(options.configPath);
+            if (options.user != null) {
+                config = config.withTargetUser(options.user);
+            }
 
             GraphServiceClient client = GraphClientFactory.create(config);
             MailService mail = MailService.create(client, config);
@@ -136,6 +140,7 @@ public final class App {
         String folder = "inbox";
         int top = 10;
         String messageId;
+        String user;
 
         static Options parse(String[] args) {
             Options o = new Options();
@@ -149,6 +154,7 @@ public final class App {
                     }
                     case "--folder" -> o.folder = value(args, ++i, "--folder");
                     case "--id" -> o.messageId = value(args, ++i, "--id");
+                    case "--user" -> o.user = value(args, ++i, "--user");
                     case "--config" -> o.configPath = Path.of(value(args, ++i, "--config"));
                     default -> throw new IllegalArgumentException("不明な引数です: " + args[i]);
                 }

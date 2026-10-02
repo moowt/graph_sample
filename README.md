@@ -109,6 +109,7 @@ To sign in, use a web browser to open the page https://www.microsoft.com/link an
 | `--top N` | 取得件数 (1〜100) | 10 |
 | `--folder NAME` | `inbox` / `sentitems` / `drafts` / `deleteditems` / `archive` / `junkemail` またはフォルダー ID | `inbox` |
 | `--id ID` | 指定メッセージの本文をテキストで表示 | - |
+| `--user UPN` | 取得対象のメールボックス (client-secret モードのみ。`target.user` を上書き) | - |
 | `--config PATH` | 設定ファイル | `./config.properties` |
 
 ## 企業アカウントで検証する場合
@@ -143,10 +144,50 @@ tenant.id=<企業テナントID>
    target.user=user@contoso.com
    ```
 
-> **注意**: アプリケーションの許可 `Mail.Read` は、既定では **テナント内の全メールボックス** を読めます。
-> 企業環境では Exchange Online の **RBAC for Applications** (または Application Access Policy) で
-> 対象メールボックスを制限することを強く推奨します。
+> **注意**: Entra ID でアプリケーションの許可 `Mail.Read` を与えると **テナント内の全メールボックス** を読めます。
+> 企業環境では次の「アクセスできるメールボックスを絞る」の方式を使ってください。
 > また本番ではクライアントシークレットより証明書認証の利用を検討してください。
+
+### アクセスできるメールボックスを絞る (Exchange Online RBAC for Applications)
+
+アプリに与える権限を Entra ID ではなく **Exchange Online 側** で付与し、対象メールボックスをスコープで限定します。
+(従来の Application Access Policy の後継となる方式です。)
+
+**ポイント**: Entra ID の `Mail.Read` (アプリケーションの許可) と Exchange の RBAC は **足し算 (OR)** で評価されます。
+Entra ID 側に `Mail.Read` が残っていると全メールボックスが読めてしまうため、**Entra ID 側の許可は付けない (外す)** でください。
+アプリのコードは変更不要です (`.default` スコープのまま)。
+
+Exchange Online PowerShell で実行します。
+
+```powershell
+Install-Module ExchangeOnlineManagement   # 初回のみ
+Connect-ExchangeOnline
+
+# 1. アプリのサービスプリンシパルを Exchange に登録
+#    ObjectId は「エンタープライズ アプリケーション」側のオブジェクト ID (アプリ登録のオブジェクト ID ではない)
+New-ServicePrincipal -AppId <クライアントID> -ObjectId <エンタープライズアプリのオブジェクトID> -DisplayName "graph-mail-sample"
+
+# 2. 許可するメールボックスに目印を付け、それを条件にスコープを作成
+Set-Mailbox -Identity allowed@contoso.onmicrosoft.com -CustomAttribute1 "GraphMailAllowed"
+New-ManagementScope -Name "GraphMailAllowed" -RecipientRestrictionFilter "CustomAttribute1 -eq 'GraphMailAllowed'"
+
+# 3. スコープ付きで "Application Mail.Read" ロールを割り当て
+New-ManagementRoleAssignment -App <クライアントID> -Role "Application Mail.Read" -CustomResourceScope "GraphMailAllowed"
+
+# 4. 確認 (InScope が True / False になる)
+Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource allowed@contoso.onmicrosoft.com
+Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource denied@contoso.onmicrosoft.com
+```
+
+アプリで確認します。反映までキャッシュにより **30 分〜2 時間程度** かかることがあります。
+
+```bash
+mvn -q compile exec:java -Dexec.args="--user allowed@contoso.onmicrosoft.com"   # 取得できる
+mvn -q compile exec:java -Dexec.args="--user denied@contoso.onmicrosoft.com"    # 403 ErrorAccessDenied
+```
+
+- 検証用の「許可しない」メールボックスには、ライセンス不要の **共有メールボックス** が使えます。
+- 対象を部署単位で管理したい場合は、`-CustomResourceScope` の代わりに管理単位 (`-RecipientAdministrativeUnitScope`) も使えます。
 
 ## トラブルシューティング
 
