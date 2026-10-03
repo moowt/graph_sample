@@ -4,14 +4,15 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 
 - まず **個人の Microsoft アカウント** (outlook.com / hotmail.com など) で動作確認
 - 設定を切り替えるだけで **企業アカウント (Entra ID / Exchange Online)** でも検証可能
+- 接続先を **グローバル版 / 中国版 (21Vianet)** で切り替え可能
 
 ## 構成
 
 | ファイル | 役割 |
 |---|---|
 | `App.java` | エントリーポイント。引数解析と表示 |
-| `AppConfig.java` | `config.properties` の読み込み・検証 |
-| `GraphClientFactory.java` | 認証モードに応じた `GraphServiceClient` の生成 |
+| `AppConfig.java` | `config.properties` の読み込み・検証、接続先クラウド (グローバル版 / 中国版) の定義 |
+| `GraphClientFactory.java` | 認証モード・接続先クラウドに応じた `GraphServiceClient` の生成 |
 | `MailService.java` / `MeMailService.java` / `UserMailService.java` | メール取得 (`/me` 版と `/users/{id}` 版) |
 
 使用ライブラリ: [Microsoft Graph Java SDK](https://github.com/microsoftgraph/msgraph-sdk-java) v6、Azure Identity
@@ -188,6 +189,32 @@ mvn -q compile exec:java -Dexec.args="--user denied@contoso.onmicrosoft.com"    
 
 - 検証用の「許可しない」メールボックスには、ライセンス不要の **共有メールボックス** が使えます。
 - 対象を部署単位で管理したい場合は、`-CustomResourceScope` の代わりに管理単位 (`-RecipientAdministrativeUnitScope`) も使えます。
+
+## 中国版 (21Vianet) で使う場合
+
+中国版 Microsoft 365 は、グローバル版とは別のクラウドで、エンドポイントが異なります。
+`config.properties` の `cloud` で切り替えます (未指定時は `global`)。
+
+| | `cloud=global` (既定) | `cloud=china` |
+|---|---|---|
+| 認証 (トークン発行) | `https://login.microsoftonline.com` | `https://login.chinacloudapi.cn` |
+| Graph API | `https://graph.microsoft.com/v1.0` | `https://microsoftgraph.chinacloudapi.cn/v1.0` |
+| スコープ (委任) | `https://graph.microsoft.com/Mail.Read` など | `https://microsoftgraph.chinacloudapi.cn/Mail.Read` など |
+| スコープ (アプリケーション) | `https://graph.microsoft.com/.default` | `https://microsoftgraph.chinacloudapi.cn/.default` |
+
+```properties
+cloud=china
+auth.mode=client-secret          # device-code も可
+client.id=<中国版で登録したアプリのクライアントID>
+tenant.id=<中国版のテナントID>
+client.secret=<シークレットの値>
+target.user=user@contoso.partner.onmschina.cn
+```
+
+- テナント・アカウント・アプリ登録はグローバル版と **別物** です。アプリ登録は中国版の Azure ポータル (https://portal.azure.cn) で行い、グローバル版のクライアント ID は使えません。
+- 中国版には個人用 Microsoft アカウントが無いため、`tenant.id=consumers` は使えません (起動時にエラーにしています)。
+- Exchange Online PowerShell は `Connect-ExchangeOnline -ExchangeEnvironmentName O365China` で接続します。
+- Graph API や Exchange の機能 (RBAC for Applications など) は、グローバル版と提供状況が異なる場合があります。利用前に中国版のドキュメントで確認してください。
 
 ## トラブルシューティング
 
