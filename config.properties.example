@@ -4,6 +4,11 @@
 #   config.properties は .gitignore 済みです(コミットしないこと)。
 # ============================================================
 
+# 接続先クラウド
+#   global : グローバル版 Microsoft 365 (既定)
+#   china  : 中国版 Microsoft 365 (21Vianet 運営)
+cloud=global
+
 # 認証モード
 #   device-code   : 委任アクセス。ユーザーがブラウザでサインインする(個人アカウントはこちらのみ)
 #   client-secret : アプリケーションアクセス。サインイン不要(企業テナント専用・管理者同意が必要)
@@ -16,6 +21,7 @@ client.id=00000000-0000-0000-0000-000000000000
 #   個人の Microsoft アカウント (outlook.com / hotmail.com 等) : consumers
 #   企業アカウント (device-code)                             : テナント ID または organizations
 #   企業アカウント (client-secret)                           : テナント ID (必須)
+#   ※ 中国版には個人アカウントが無いため consumers は使えません
 tenant.id=consumers
 
 # ---- client-secret モードのみ使用 ----
