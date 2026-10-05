@@ -15,6 +15,13 @@ public final class GraphClientFactory {
     private GraphClientFactory() {
     }
 
+    /**
+     * 設定に応じた資格情報と接続先で GraphServiceClient を生成する。
+     * 認証 (トークン取得) は、最初に API を呼んだ時点で行われる。
+     *
+     * @param config 設定
+     * @return 接続先クラウドの Graph v1.0 に向いたクライアント
+     */
     public static GraphServiceClient create(AppConfig config) {
         Cloud cloud = config.cloud();
         GraphServiceClient client = switch (config.authMode()) {
@@ -23,8 +30,9 @@ public final class GraphClientFactory {
                         .clientId(config.clientId())
                         .tenantId(config.tenantId())
                         .authorityHost(cloud.authorityHost())
-                        // 表示されたURLをブラウザで開き、コードを入力してサインインする
-                        .challengeConsumer(challenge -> System.out.println("\n" + challenge.getMessage() + "\n"))
+                        // 表示されたURLをブラウザで開き、コードを入力してサインインする。
+                        // 標準出力は JSON 専用にするため、標準エラー出力に出す
+                        .challengeConsumer(challenge -> System.err.println("\n" + challenge.getMessage() + "\n"))
                         .build();
                 yield new GraphServiceClient(credential, delegatedScopes(cloud));
             }
