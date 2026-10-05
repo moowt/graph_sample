@@ -10,8 +10,8 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 
 | ファイル | 役割 |
 |---|---|
-| `App.java` | エントリーポイント。引数解析と表示 |
-| `AppConfig.java` | `config.properties` の読み込み・検証、接続先クラウド (グローバル版 / 中国版) の定義 |
+| `App.java` | エントリーポイント。設定に応じて一覧 / 個別取得を行い、応答 JSON を出力 |
+| `AppConfig.java` | `config.properties` の読み込み・検証 (認証・接続先・取得内容)、接続先クラウド (グローバル版 / 中国版) の定義 |
 | `GraphClientFactory.java` | 認証モード・接続先クラウドに応じた `GraphServiceClient` の生成 |
 | `MailService.java` | メール取得 (認証モードに応じて `/me` または `/users/{id}` のメールボックスを読む) |
 
@@ -78,19 +78,27 @@ Graph API の応答 JSON を整形して **標準出力** に出します。
 `> result.json` でリダイレクトすると JSON だけを保存できます。
 
 ```bash
-# 一覧 API: 受信トレイの最新10件
-mvn -q compile exec:java
+mvn -q compile exec:java                                        # ./config.properties を使う
+mvn -q compile exec:java -Dexec.args="--config other.properties" # 別の設定ファイルを使う
+```
 
-# 件数・フォルダーを指定
-mvn -q compile exec:java -Dexec.args="--top 5 --folder sentitems"
+取得内容は `config.properties` の `search.*` で指定します (すべて任意)。
 
-# 直近7日間のメール (新しい順) / 期間指定・古い順 / 送信済みアイテム
-mvn -q compile exec:java -Dexec.args="--days 7"
-mvn -q compile exec:java -Dexec.args="--since 2026-10-01 --until 2026-10-05 --order oldest"
-mvn -q compile exec:java -Dexec.args="--folder sentitems --days 7"
+```properties
+# 直近7日間の受信トレイを新しい順に10件
+search.folder=inbox
+search.days=7
+search.order=newest
+search.top=10
 
-# 個別取得 API: 1件を取得 (ID は一覧の "id" の値)
-mvn -q compile exec:java -Dexec.args="--id <メッセージID>"
+# 期間を指定して古い順に (search.days は空にする)
+search.days=
+search.since=2026-10-01
+search.until=2026-10-05
+search.order=oldest
+
+# 個別取得 (指定すると一覧ではなく個別取得 API を呼ぶ。ID は一覧の "id" の値)
+search.message-id=AAMkAGMwMjZmNGYx...
 ```
 
 device-code モードでは、実行すると次のように表示されるので、ブラウザで URL を開いてコードを入力し、サインイン・同意します。
@@ -104,7 +112,7 @@ To sign in, use a web browser to open the page https://www.microsoft.com/link an
 | 実行内容 | 呼び出す API | 出力 |
 |---|---|---|
 | 一覧 (既定) | `GET /me/mailFolders/{folder}/messages` (client-secret では `/users/{UPN}/...`) | 応答 JSON そのまま (`value` 配列。続きがあれば `@odata.nextLink`) |
-| 個別 (`--id`) | `GET /me/messages/{id}` (client-secret では `/users/{UPN}/...`) | 応答 JSON そのまま (全プロパティ。本文はテキスト形式) |
+| 個別 (`search.message-id` を指定) | `GET /me/messages/{id}` (client-secret では `/users/{UPN}/...`) | 応答 JSON そのまま (全プロパティ。本文はテキスト形式) |
 
 - 一覧は `$select` で主要プロパティ (件名・差出人・宛先・受信/送信日時・既読・添付有無・プレビュー) に絞っています。
 - 日時の条件と並び順には `receivedDateTime` を使います。Exchange はこの値を、受信メールでは受信日時、送信済みメールでは送信日時 (送信済みアイテムに入った日時) に設定するため、受信・送信を区別せず「メールの日時」として扱えます。
@@ -137,23 +145,24 @@ To sign in, use a web browser to open the page https://www.microsoft.com/link an
 }
 ```
 
-### 引数
+### 取得内容の設定 (`search.*`)
 
-| 引数 | 説明 | 既定値 |
+引数は `--config PATH` (設定ファイルの指定) のみです。取得内容はすべて `config.properties` で指定します。
+未記載または空欄の項目は既定値になります。
+
+| キー | 説明 | 既定値 |
 |---|---|---|
-| `--top N` | 取得件数 (1〜100) | 10 |
-| `--folder NAME` | `inbox` / `sentitems` / `drafts` / `deleteditems` / `archive` / `junkemail` またはフォルダー ID | `inbox` |
-| `--days N` | 直近 N 日以内のメールに絞り込む (`--since` と同時指定不可) | 絞り込みなし |
-| `--since DATE` | この日時以降 (`2026-10-01` または `2026-10-01T09:00:00+09:00`。日付のみはシステムのタイムゾーンの 0 時) | - |
-| `--until DATE` | この日時より前 (形式は `--since` と同じ) | - |
-| `--order ORDER` | 並び順。`newest` (新しい順) / `oldest` (古い順) | `newest` |
-| `--id ID` | 個別取得 API で指定メッセージ 1 件を取得 | - |
-| `--user UPN` | 取得対象のメールボックス (client-secret モードのみ。`target.user` を上書き) | - |
-| `--config PATH` | 設定ファイル | `./config.properties` |
+| `search.folder` | `inbox` / `sentitems` / `drafts` / `deleteditems` / `archive` / `junkemail` またはフォルダー ID | `inbox` |
+| `search.days` | 直近 N 日以内のメールに絞り込む (`search.since` と同時指定不可) | 絞り込みなし |
+| `search.since` | この日時以降 (`2026-10-01` または `2026-10-01T09:00:00+09:00`。日付のみはシステムのタイムゾーンの 0 時) | - |
+| `search.until` | この日時より前 (形式は `search.since` と同じ) | - |
+| `search.order` | 並び順。`newest` (新しい順) / `oldest` (古い順) | `newest` |
+| `search.top` | 取得件数 (1〜100) | `10` |
+| `search.message-id` | 個別取得 API で取得するメッセージ ID。指定すると他の `search.*` は使わない | - |
 
 ### プログラムから検索条件を指定する
 
-CLI 引数は `MailSearchCriteria` (検索条件オブジェクト) に変換して `MailService` に渡しています。
+設定ファイルの `search.*` は `MailSearchCriteria` (検索条件オブジェクト) に変換して `MailService` に渡しています。
 プロダクトのコードからは、ビルダーで直接組み立てて使えます。
 
 ```java
@@ -239,8 +248,10 @@ Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource de
 アプリで確認します。反映までキャッシュにより **30 分〜2 時間程度** かかることがあります。
 
 ```bash
-mvn -q compile exec:java -Dexec.args="--user allowed@contoso.onmicrosoft.com"   # 取得できる
-mvn -q compile exec:java -Dexec.args="--user denied@contoso.onmicrosoft.com"    # 403 ErrorAccessDenied
+# config.properties の target.user を切り替えて実行
+#   target.user=allowed@contoso.onmicrosoft.com  → 取得できる
+#   target.user=denied@contoso.onmicrosoft.com   → 403 ErrorAccessDenied
+mvn -q compile exec:java
 ```
 
 - 検証用の「許可しない」メールボックスには、ライセンス不要の **共有メールボックス** が使えます。

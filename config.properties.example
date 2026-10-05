@@ -28,3 +28,27 @@ tenant.id=consumers
 # client.secret=
 # 取得対象のメールボックス (UPN またはユーザー ID)
 # target.user=user@contoso.com
+
+# ============================================================
+# 取得内容 (すべて任意。空欄または未記載なら既定値)
+# ============================================================
+
+# 対象フォルダー: inbox / sentitems / drafts / deleteditems / archive / junkemail またはフォルダー ID (既定: inbox)
+search.folder=inbox
+
+# 期間 (日時は receivedDateTime で判定。受信メールは受信日時、送信済みメールは送信日時が入る)
+#   search.days  : 直近 N 日以内 (search.since と同時指定不可)
+#   search.since : この日時以降。2026-10-01 または 2026-10-01T09:00:00+09:00 (日付のみはシステムのタイムゾーンの 0 時)
+#   search.until : この日時より前 (形式は search.since と同じ)
+search.days=7
+search.since=
+search.until=
+
+# 並び順: newest (新しい順) / oldest (古い順) (既定: newest)
+search.order=newest
+
+# 取得件数: 1〜100 (既定: 10)
+search.top=10
+
+# 個別取得するメッセージ ID (一覧の "id" の値)。指定すると一覧ではなく個別取得 API を呼ぶ
+search.message-id=

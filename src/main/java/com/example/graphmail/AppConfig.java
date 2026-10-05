@@ -4,6 +4,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.Properties;
 
 /**
@@ -17,9 +23,12 @@ import java.util.Properties;
  * @param tenantId     テナント ID (consumers / organizations などの特殊値を含む)
  * @param clientSecret クライアントシークレット (client-secret モードのみ。それ以外は null)
  * @param targetUser   取得対象のメールボックスの UPN またはユーザー ID (client-secret モードのみ。それ以外は null)
+ * @param searchCriteria 一覧 API の検索条件 (search.* から組み立てる)
+ * @param messageId    個別取得するメッセージ ID (search.message-id)。null なら一覧を取得する
  */
 public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String tenantId,
-                        String clientSecret, String targetUser) {
+                        String clientSecret, String targetUser,
+                        MailSearchCriteria searchCriteria, String messageId) {
 
     /** 接続先のクラウド。認証とGraphのエンドポイントがクラウドごとに異なる。 */
     public enum Cloud {
@@ -97,7 +106,7 @@ public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String 
      * @return 読み込んだ設定
      * @throws IOException ファイルの読み込みに失敗した場合
      * @throws IllegalStateException ファイルが無い、必須項目が無い、または組み合わせが不正な場合
-     * @throws IllegalArgumentException cloud / auth.mode の値が不正な場合
+     * @throws IllegalArgumentException cloud / auth.mode / search.* の値が不正な場合
      */
     public static AppConfig load(Path path) throws IOException {
         if (!Files.exists(path)) {
@@ -128,27 +137,86 @@ public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String 
             clientSecret = required(props, "client.secret");
             targetUser = required(props, "target.user");
         }
-        return new AppConfig(cloud, mode, clientId, tenantId, clientSecret, targetUser);
+        return new AppConfig(cloud, mode, clientId, tenantId, clientSecret, targetUser,
+                loadSearchCriteria(props), optional(props, "search.message-id"));
     }
 
-    /**
-     * 取得対象のメールボックスを差し替えたコピーを返す (client-secret モードのみ)。
-     *
-     * @param user 取得対象のメールボックスの UPN またはユーザー ID
-     * @return target.user を差し替えた設定
-     * @throws IllegalArgumentException client-secret モード以外で呼んだ場合
-     */
-    public AppConfig withTargetUser(String user) {
-        if (authMode != AuthMode.CLIENT_SECRET) {
-            throw new IllegalArgumentException("--user は client-secret モードでのみ指定できます。");
+    /** search.* を検索条件に変換する。未設定の項目は MailSearchCriteria の既定値になる。 */
+    private static MailSearchCriteria loadSearchCriteria(Properties props) {
+        MailSearchCriteria.Builder b = MailSearchCriteria.builder();
+        String folder = optional(props, "search.folder");
+        if (folder != null) {
+            b.folder(folder);
         }
-        return new AppConfig(cloud, authMode, clientId, tenantId, clientSecret, user);
+        String top = optional(props, "search.top");
+        if (top != null) {
+            int n = parseInt(top, "search.top");
+            if (n < 1 || n > 100) {
+                throw new IllegalArgumentException("search.top は 1〜100 で指定してください: " + n);
+            }
+            b.top(n);
+        }
+        String order = optional(props, "search.order");
+        if (order != null) {
+            b.sortOrder(switch (order) {
+                case "newest" -> MailSearchCriteria.SortOrder.NEWEST_FIRST;
+                case "oldest" -> MailSearchCriteria.SortOrder.OLDEST_FIRST;
+                default -> throw new IllegalArgumentException("search.order は newest か oldest を指定してください: " + order);
+            });
+        }
+        String days = optional(props, "search.days");
+        String since = optional(props, "search.since");
+        if (days != null && since != null) {
+            throw new IllegalArgumentException("search.days と search.since は同時に指定できません。");
+        }
+        if (days != null) {
+            int n = parseInt(days, "search.days");
+            if (n < 1) {
+                throw new IllegalArgumentException("search.days は 1 以上で指定してください: " + n);
+            }
+            b.withinLast(Duration.ofDays(n));
+        }
+        if (since != null) {
+            b.since(parseDateTime(since, "search.since"));
+        }
+        String until = optional(props, "search.until");
+        if (until != null) {
+            b.until(parseDateTime(until, "search.until"));
+        }
+        return b.build();
+    }
+
+    /** 日付のみ (システムのタイムゾーンの 0 時) またはオフセット付き日時を受け付ける。 */
+    private static Instant parseDateTime(String value, String key) {
+        try {
+            if (value.length() == 10) {
+                return LocalDate.parse(value).atStartOfDay(ZoneId.systemDefault()).toInstant();
+            }
+            return OffsetDateTime.parse(value).toInstant();
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    key + " は 2026-10-01 または 2026-10-01T09:00:00+09:00 の形式で指定してください: " + value);
+        }
+    }
+
+    private static int parseInt(String value, String key) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(key + " は整数で指定してください: " + value);
+        }
     }
 
     private static boolean isConsumerOrMultiTenant(String tenantId) {
         return tenantId.equalsIgnoreCase("consumers")
                 || tenantId.equalsIgnoreCase("common")
                 || tenantId.equalsIgnoreCase("organizations");
+    }
+
+    /** 値を返す。未設定または空なら null。 */
+    private static String optional(Properties props, String key) {
+        String value = props.getProperty(key);
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String required(Properties props, String key) {
