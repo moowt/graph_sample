@@ -73,34 +73,67 @@ tenant.id=consumers
 
 ## 手順 3: 実行
 
+Graph API の応答 JSON を整形して **標準出力** に出します。
+メールボックス名・絞り込み条件・サインイン用コードなどの補足情報は **標準エラー出力** に出るため、
+`> result.json` でリダイレクトすると JSON だけを保存できます。
+
 ```bash
-# 受信トレイの最新10件
+# 一覧 API: 受信トレイの最新10件
 mvn -q compile exec:java
 
 # 件数・フォルダーを指定
 mvn -q compile exec:java -Dexec.args="--top 5 --folder sentitems"
 
-# 1件の本文を表示 (ID は一覧に出力されます)
+# 直近7日間に受信したメール / 直近7日間に送信したメール
+mvn -q compile exec:java -Dexec.args="--days 7"
+mvn -q compile exec:java -Dexec.args="--folder sentitems --days 7 --date-field sent"
+
+# 個別取得 API: 1件を取得 (ID は一覧の "id" の値)
 mvn -q compile exec:java -Dexec.args="--id <メッセージID>"
 ```
 
-実行すると次のように表示されるので、ブラウザで URL を開いてコードを入力し、サインイン・同意します。
+device-code モードでは、実行すると次のように表示されるので、ブラウザで URL を開いてコードを入力し、サインイン・同意します。
 
 ```
 To sign in, use a web browser to open the page https://www.microsoft.com/link and enter the code XXXXXXXX to authenticate.
 ```
 
-出力例:
+### 呼び出す API と出力
 
-```
-メールボックス: Taro Yamada <taro@outlook.com>
-フォルダー: inbox / 2 件
---------------------------------------------------------------------------------
-* 2026-09-30 09:12  Microsoft アカウント チーム <account-security-noreply@accountprotection.microsoft.com>
-  件名: 新しいアプリが Microsoft アカウントに接続されました
-  概要: ...
-  ID  : AQMkADAwATM3...
---------------------------------------------------------------------------------
+| 実行内容 | 呼び出す API | 出力 |
+|---|---|---|
+| 一覧 (既定) | `GET /me/mailFolders/{folder}/messages` (client-secret では `/users/{UPN}/...`) | 応答 JSON そのまま (`value` 配列。続きがあれば `@odata.nextLink`) |
+| 個別 (`--id`) | `GET /me/messages/{id}` (client-secret では `/users/{UPN}/...`) | 応答 JSON そのまま (全プロパティ。本文はテキスト形式) |
+
+- 一覧は `$select` で主要プロパティ (件名・差出人・宛先・受信/送信日時・既読・添付有無・プレビュー) に絞っています。
+- `--days` を指定すると `$filter=receivedDateTime ge <N日前>` (または `sentDateTime`) で絞り込み、同じ日時の新しい順に並べます。
+- 本文は `Prefer: outlook.body-content-type="text"` ヘッダーでテキスト形式にしています (HTML で欲しい場合はヘッダーを外す)。
+
+一覧の出力例:
+
+```json
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('...')/mailFolders('inbox')/messages(id,subject,...)",
+  "value": [
+    {
+      "@odata.etag": "W/\"CQAAABYAAAA...\"",
+      "id": "AAMkAGMwMjZmNGYx...",
+      "receivedDateTime": "2026-10-03T09:51:04Z",
+      "sentDateTime": "2026-10-03T09:50:47Z",
+      "hasAttachments": false,
+      "subject": "テスト",
+      "bodyPreview": "メール受信確認\r\n\r\ntest",
+      "isRead": true,
+      "from": {
+        "emailAddress": {
+          "name": "Taro Yamada",
+          "address": "taro@example.com"
+        }
+      },
+      "toRecipients": [ ... ]
+    }
+  ]
+}
 ```
 
 ### 引数
@@ -109,7 +142,9 @@ To sign in, use a web browser to open the page https://www.microsoft.com/link an
 |---|---|---|
 | `--top N` | 取得件数 (1〜100) | 10 |
 | `--folder NAME` | `inbox` / `sentitems` / `drafts` / `deleteditems` / `archive` / `junkemail` またはフォルダー ID | `inbox` |
-| `--id ID` | 指定メッセージの本文をテキストで表示 | - |
+| `--days N` | 直近 N 日以内のメールに絞り込む | 絞り込みなし |
+| `--date-field FIELD` | `--days` の基準。`received` (受信日時) / `sent` (送信日時) | `received` |
+| `--id ID` | 個別取得 API で指定メッセージ 1 件を取得 | - |
 | `--user UPN` | 取得対象のメールボックス (client-secret モードのみ。`target.user` を上書き) | - |
 | `--config PATH` | 設定ファイル | `./config.properties` |
 

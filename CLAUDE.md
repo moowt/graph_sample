@@ -12,9 +12,10 @@ Microsoft Graph Java SDK v6 と Azure Identity を使用し、HTTP やトーク�
 
 ```bash
 mvn -q compile                                              # ビルド (Java 17 / maven.compiler.release=17)
-mvn -q compile exec:java                                    # 実行 (受信トレイ最新10件)
+mvn -q compile exec:java                                    # 一覧 API (受信トレイ最新10件)
 mvn -q compile exec:java -Dexec.args="--top 5 --folder sentitems"
-mvn -q compile exec:java -Dexec.args="--id <メッセージID>"     # 本文表示
+mvn -q compile exec:java -Dexec.args="--days 7 --date-field sent"  # 直近7日 (受信/送信日時) で絞り込み
+mvn -q compile exec:java -Dexec.args="--id <メッセージID>"     # 個別取得 API
 mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret モードで対象メールボックスを上書き
 ```
 
@@ -51,10 +52,12 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 - Graph SDK は許可ホスト (`graph.microsoft.com`、`microsoftgraph.chinacloudapi.cn`、米国政府版など) にしか `Authorization` ヘッダーを付けない。一覧にないホストを使う場合は、`AzureIdentityAuthenticationProvider` に allowedHosts を渡して構築する必要がある。
 - `cloud=china` と `tenant.id=consumers` の組み合わせは拒否する (中国版に個人アカウントはない)。
 
-**メール取得 (`MailService`)**
+**メール取得と出力 (`MailService` / `App`)**
 
-- 取得プロパティは `LIST_SELECT` / `DETAIL_SELECT` で `$select` を絞っている。表示項目を増やすときはここにも追加する。
-- 本文は `Prefer: outlook.body-content-type="text"` ヘッダーでテキストとして取得している。
+- 出力は Graph の応答 JSON をそのまま Gson で整形したもの。SDK のモデルには変換せず、SDK でリクエストを組み立てて (`toGetRequestInformation`)、`RequestAdapter.sendPrimitive(..., InputStream.class)` で生の応答を受け取る。エラー応答は `ERROR_MAPPING` で `ODataError` 例外に変換している。
+- 標準出力は JSON 専用。メールボックス名・絞り込み条件・デバイスコードの案内は標準エラー出力に出す (`System.out` に補足情報を足さない)。
+- 一覧は `LIST_SELECT` で `$select` を絞っている。個別取得は `$select` なし (全プロパティ)。本文は `Prefer: outlook.body-content-type="text"` でテキスト形式。
+- 日時の絞り込みは `DateFilter` (`--days` / `--date-field`)。`$filter` と `$orderby` を併用するときは、`$orderby` のプロパティが `$filter` にも含まれていないと Graph が `400 InefficientFilter` を返すため、並び順は絞り込みと同じ日時プロパティにしている。
 - 一覧は1リクエスト (最大100件) のみ。ページングとトークンの永続キャッシュは未実装 (実行ごとにサインインが必要)。
 
 ## 注意点

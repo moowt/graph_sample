@@ -1,33 +1,31 @@
 package com.example.graphmail;
 
-import com.microsoft.graph.models.EmailAddress;
-import com.microsoft.graph.models.Message;
-import com.microsoft.graph.models.Recipient;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParser;
 import com.microsoft.graph.models.odataerrors.ODataError;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
 import java.nio.file.Path;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Microsoft Graph でメールを取得するサンプル。
+ * Graph API の応答 JSON を整形して標準出力に出す (補足情報は標準エラー出力)。
  *
  * <pre>
  * 使い方:
- *   (引数なし)            受信トレイの最新 10 件を一覧表示
+ *   (引数なし)            一覧 API: 受信トレイの最新 10 件
  *   --top N              取得件数 (1〜100)
  *   --folder NAME        フォルダー (inbox, sentitems, drafts, deleteditems, archive, junkemail またはフォルダー ID)
- *   --id MESSAGE_ID      指定メッセージの本文を表示
+ *   --days N             直近 N 日以内のメールに絞り込む
+ *   --date-field FIELD   --days の基準: received (受信日時, 既定) / sent (送信日時)
+ *   --id MESSAGE_ID      個別取得 API: 指定メッセージ 1 件
  *   --user UPN           取得対象のメールボックス (client-secret モードのみ。target.user を上書き)
  *   --config PATH        設定ファイル (既定: ./config.properties)
  * </pre>
  */
 public final class App {
 
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+    private static final Gson PRETTY = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     public static void main(String[] args) {
         try {
@@ -40,12 +38,18 @@ public final class App {
             GraphServiceClient client = GraphClientFactory.create(config);
             MailService mail = MailService.create(client, config);
 
-            System.out.println("メールボックス: " + mail.describeMailbox());
+            System.err.println("メールボックス: " + mail.describeMailbox());
+            String json;
             if (options.messageId != null) {
-                printDetail(mail.getMessage(options.messageId));
+                json = mail.getMessageJson(options.messageId);
             } else {
-                printList(mail.listMessages(options.folder, options.top), options.folder);
+                DateFilter filter = options.days == null ? null : DateFilter.lastDays(options.dateField, options.days);
+                if (filter != null) {
+                    System.err.println("絞り込み: " + filter.toODataFilter());
+                }
+                json = mail.listMessagesJson(options.folder, options.top, filter);
             }
+            System.out.println(PRETTY.toJson(JsonParser.parseString(json)));
         } catch (ODataError e) {
             // Graph API がエラーを返した場合 (権限不足、存在しない ID など)
             System.err.println("Graph API エラー: HTTP " + e.getResponseStatusCode());
@@ -67,83 +71,19 @@ public final class App {
         }
     }
 
-    private static void printList(List<Message> messages, String folder) {
-        System.out.println("フォルダー: " + folder + " / " + messages.size() + " 件");
-        System.out.println("-".repeat(80));
-        for (Message m : messages) {
-            String mark = Boolean.TRUE.equals(m.getIsRead()) ? " " : "*";
-            String clip = Boolean.TRUE.equals(m.getHasAttachments()) ? " [添付]" : "";
-            System.out.printf("%s %s  %s%n", mark, formatDate(m), formatSender(m));
-            System.out.printf("  件名: %s%s%n", nullToEmpty(m.getSubject()), clip);
-            System.out.printf("  概要: %s%n", abbreviate(m.getBodyPreview(), 100));
-            System.out.printf("  ID  : %s%n", m.getId());
-            System.out.println("-".repeat(80));
-        }
-        System.out.println("(* = 未読)  本文を見るには --id <ID> を指定してください。");
-    }
-
-    private static void printDetail(Message m) {
-        System.out.println("-".repeat(80));
-        System.out.println("受信日時: " + formatDate(m));
-        System.out.println("差出人  : " + formatSender(m));
-        System.out.println("宛先    : " + formatRecipients(m.getToRecipients()));
-        if (m.getCcRecipients() != null && !m.getCcRecipients().isEmpty()) {
-            System.out.println("CC      : " + formatRecipients(m.getCcRecipients()));
-        }
-        System.out.println("件名    : " + nullToEmpty(m.getSubject()));
-        System.out.println("添付    : " + (Boolean.TRUE.equals(m.getHasAttachments()) ? "あり" : "なし"));
-        System.out.println("-".repeat(80));
-        System.out.println(m.getBody() != null ? nullToEmpty(m.getBody().getContent()) : "");
-    }
-
-    private static String formatDate(Message m) {
-        return m.getReceivedDateTime() != null ? DATE_FORMAT.format(m.getReceivedDateTime()) : "-";
-    }
-
-    private static String formatSender(Message m) {
-        return m.getFrom() != null ? formatAddress(m.getFrom().getEmailAddress()) : "(差出人なし)";
-    }
-
-    private static String formatRecipients(List<Recipient> recipients) {
-        if (recipients == null || recipients.isEmpty()) {
-            return "";
-        }
-        return recipients.stream()
-                .map(r -> formatAddress(r.getEmailAddress()))
-                .collect(Collectors.joining(", "));
-    }
-
-    private static String formatAddress(EmailAddress address) {
-        if (address == null) {
-            return "";
-        }
-        String name = address.getName();
-        String addr = address.getAddress();
-        if (name == null || name.isBlank() || name.equals(addr)) {
-            return nullToEmpty(addr);
-        }
-        return name + " <" + nullToEmpty(addr) + ">";
-    }
-
-    private static String abbreviate(String s, int max) {
-        String oneLine = nullToEmpty(s).replaceAll("\\s+", " ").strip();
-        return oneLine.length() <= max ? oneLine : oneLine.substring(0, max) + "…";
-    }
-
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
-    }
-
     /** コマンドライン引数。 */
     private static final class Options {
         Path configPath = Path.of("config.properties");
         String folder = "inbox";
         int top = 10;
+        Integer days;
+        DateFilter.Field dateField = DateFilter.Field.RECEIVED;
         String messageId;
         String user;
 
         static Options parse(String[] args) {
             Options o = new Options();
+            boolean dateFieldSpecified = false;
             for (int i = 0; i < args.length; i++) {
                 switch (args[i]) {
                     case "--top" -> {
@@ -153,11 +93,24 @@ public final class App {
                         }
                     }
                     case "--folder" -> o.folder = value(args, ++i, "--folder");
+                    case "--days" -> {
+                        o.days = Integer.parseInt(value(args, ++i, "--days"));
+                        if (o.days < 1) {
+                            throw new IllegalArgumentException("--days は 1 以上で指定してください。");
+                        }
+                    }
+                    case "--date-field" -> {
+                        o.dateField = DateFilter.Field.of(value(args, ++i, "--date-field"));
+                        dateFieldSpecified = true;
+                    }
                     case "--id" -> o.messageId = value(args, ++i, "--id");
                     case "--user" -> o.user = value(args, ++i, "--user");
                     case "--config" -> o.configPath = Path.of(value(args, ++i, "--config"));
                     default -> throw new IllegalArgumentException("不明な引数です: " + args[i]);
                 }
+            }
+            if (dateFieldSpecified && o.days == null) {
+                throw new IllegalArgumentException("--date-field は --days と一緒に指定してください。");
             }
             return o;
         }

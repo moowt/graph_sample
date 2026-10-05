@@ -23,8 +23,9 @@ public final class GraphClientFactory {
                         .clientId(config.clientId())
                         .tenantId(config.tenantId())
                         .authorityHost(cloud.authorityHost())
-                        // 表示されたURLをブラウザで開き、コードを入力してサインインする
-                        .challengeConsumer(challenge -> System.out.println("\n" + challenge.getMessage() + "\n"))
+                        // 表示されたURLをブラウザで開き、コードを入力してサインインする。
+                        // 標準出力は JSON 専用にするため、標準エラー出力に出す
+                        .challengeConsumer(challenge -> System.err.println("\n" + challenge.getMessage() + "\n"))
                         .build();
                 yield new GraphServiceClient(credential, delegatedScopes(cloud));
             }
