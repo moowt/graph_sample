@@ -26,20 +26,20 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 
 ## アーキテクチャ
 
-処理の流れ: `App` (引数解析・表示) → `AppConfig.load` (設定読込・検証) → `GraphClientFactory.create` → `MailService.create` → 実装クラスでメール取得。
+処理の流れ: `App` (引数解析・表示) → `AppConfig.load` (設定読込・検証) → `GraphClientFactory.create` → `MailService.create` → メール取得。
 
 設定は2つの直交する軸で決まり、どちらも `AppConfig` 内の enum で定義している。
 
 **認証モード `auth.mode` (`AppConfig.AuthMode`)**
 
-| モード | 認証 | 呼ぶ API | 実装 |
-|---|---|---|---|
-| `device-code` | 委任 (`DeviceCodeCredential`) | `/me/...` | `MeMailService` |
-| `client-secret` | アプリケーション (`ClientSecretCredential`) | `/users/{target.user}/...` | `UserMailService` |
+| モード | 認証 | 呼ぶ API |
+|---|---|---|
+| `device-code` | 委任 (`DeviceCodeCredential`) | `/me/...` |
+| `client-secret` | アプリケーション (`ClientSecretCredential`) | `/users/{target.user}/...` |
 
 - 個人 Microsoft アカウントは委任のみ対応 (`tenant.id=consumers`)。`client-secret` では `consumers`/`common`/`organizations` を起動時に拒否する。
 - モードを追加する場合、`GraphClientFactory.create` と `MailService.create` の `switch` 式 (default なし) を両方更新する。漏れるとコンパイルエラーになる。
-- `MailService` の Javadoc は「`/me` と `/users/{id}` は SDK 上別のビルダー」と説明しているが、SDK 6.70.0 では `me()` も `UserItemRequestBuilder` を返す。
+- SDK 6.x では `client.me()` も `client.users().byUserId(id)` も `UserItemRequestBuilder` を返す。`MailService` はこれを利用し、取得処理を共通化している。モードによって変わるのは、対象メールボックスとその表示名の取り方だけ。
 
 **接続先クラウド `cloud` (`AppConfig.Cloud`、既定 `global`)**
 

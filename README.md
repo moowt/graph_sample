@@ -13,7 +13,7 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 | `App.java` | エントリーポイント。引数解析と表示 |
 | `AppConfig.java` | `config.properties` の読み込み・検証、接続先クラウド (グローバル版 / 中国版) の定義 |
 | `GraphClientFactory.java` | 認証モード・接続先クラウドに応じた `GraphServiceClient` の生成 |
-| `MailService.java` / `MeMailService.java` / `UserMailService.java` | メール取得 (`/me` 版と `/users/{id}` 版) |
+| `MailService.java` | メール取得 (認証モードに応じて `/me` または `/users/{id}` のメールボックスを読む) |
 
 使用ライブラリ: [Microsoft Graph Java SDK](https://github.com/microsoftgraph/msgraph-sdk-java) v6、Azure Identity
 
