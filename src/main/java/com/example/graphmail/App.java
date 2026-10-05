@@ -6,6 +6,12 @@ import com.google.gson.JsonParser;
 import com.microsoft.graph.models.odataerrors.ODataError;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 
 /**
  * Microsoft Graph でメールを取得するサンプル。
@@ -17,7 +23,9 @@ import java.nio.file.Path;
  *   --top N              取得件数 (1〜100)
  *   --folder NAME        フォルダー (inbox, sentitems, drafts, deleteditems, archive, junkemail またはフォルダー ID)
  *   --days N             直近 N 日以内のメールに絞り込む
- *   --date-field FIELD   --days の基準: received (受信日時, 既定) / sent (送信日時)
+ *   --since DATE         この日時以降 (例: 2026-10-01 または 2026-10-01T09:00:00+09:00)
+ *   --until DATE         この日時より前
+ *   --order ORDER        並び順: newest (新しい順, 既定) / oldest (古い順)
  *   --id MESSAGE_ID      個別取得 API: 指定メッセージ 1 件
  *   --user UPN           取得対象のメールボックス (client-secret モードのみ。target.user を上書き)
  *   --config PATH        設定ファイル (既定: ./config.properties)
@@ -43,11 +51,9 @@ public final class App {
             if (options.messageId != null) {
                 json = mail.getMessageJson(options.messageId);
             } else {
-                DateFilter filter = options.days == null ? null : DateFilter.lastDays(options.dateField, options.days);
-                if (filter != null) {
-                    System.err.println("絞り込み: " + filter.toODataFilter());
-                }
-                json = mail.listMessagesJson(options.folder, options.top, filter);
+                MailSearchCriteria criteria = options.toCriteria();
+                System.err.println("検索条件: " + criteria);
+                json = mail.listMessagesJson(criteria);
             }
             System.out.println(PRETTY.toJson(JsonParser.parseString(json)));
         } catch (ODataError e) {
@@ -77,13 +83,14 @@ public final class App {
         String folder = "inbox";
         int top = 10;
         Integer days;
-        DateFilter.Field dateField = DateFilter.Field.RECEIVED;
+        Instant since;
+        Instant until;
+        MailSearchCriteria.SortOrder sortOrder = MailSearchCriteria.SortOrder.NEWEST_FIRST;
         String messageId;
         String user;
 
         static Options parse(String[] args) {
             Options o = new Options();
-            boolean dateFieldSpecified = false;
             for (int i = 0; i < args.length; i++) {
                 switch (args[i]) {
                     case "--top" -> {
@@ -99,20 +106,48 @@ public final class App {
                             throw new IllegalArgumentException("--days は 1 以上で指定してください。");
                         }
                     }
-                    case "--date-field" -> {
-                        o.dateField = DateFilter.Field.of(value(args, ++i, "--date-field"));
-                        dateFieldSpecified = true;
-                    }
+                    case "--since" -> o.since = parseDateTime(value(args, ++i, "--since"), "--since");
+                    case "--until" -> o.until = parseDateTime(value(args, ++i, "--until"), "--until");
+                    case "--order" -> o.sortOrder = switch (value(args, ++i, "--order")) {
+                        case "newest" -> MailSearchCriteria.SortOrder.NEWEST_FIRST;
+                        case "oldest" -> MailSearchCriteria.SortOrder.OLDEST_FIRST;
+                        default -> throw new IllegalArgumentException("--order は newest か oldest を指定してください。");
+                    };
                     case "--id" -> o.messageId = value(args, ++i, "--id");
                     case "--user" -> o.user = value(args, ++i, "--user");
                     case "--config" -> o.configPath = Path.of(value(args, ++i, "--config"));
                     default -> throw new IllegalArgumentException("不明な引数です: " + args[i]);
                 }
             }
-            if (dateFieldSpecified && o.days == null) {
-                throw new IllegalArgumentException("--date-field は --days と一緒に指定してください。");
+            if (o.days != null && o.since != null) {
+                throw new IllegalArgumentException("--days と --since は同時に指定できません。");
             }
             return o;
+        }
+
+        MailSearchCriteria toCriteria() {
+            MailSearchCriteria.Builder b = MailSearchCriteria.builder()
+                    .folder(folder)
+                    .top(top)
+                    .sortOrder(sortOrder)
+                    .since(since)
+                    .until(until);
+            if (days != null) {
+                b.withinLast(Duration.ofDays(days));
+            }
+            return b.build();
+        }
+
+        /** 日付のみ (システムのタイムゾーンの 0 時) またはオフセット付き日時を受け付ける。 */
+        private static Instant parseDateTime(String value, String name) {
+            try {
+                if (value.length() == 10) {
+                    return LocalDate.parse(value).atStartOfDay(ZoneId.systemDefault()).toInstant();
+                }
+                return OffsetDateTime.parse(value).toInstant();
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException(name + " は 2026-10-01 または 2026-10-01T09:00:00+09:00 の形式で指定してください: " + value);
+            }
         }
 
         private static String value(String[] args, int i, String name) {

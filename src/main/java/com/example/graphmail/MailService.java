@@ -70,24 +70,14 @@ public final class MailService {
         return mailboxLabel.get();
     }
 
-    /**
-     * 一覧 API: GET .../mailFolders/{folder}/messages の応答 JSON。
-     *
-     * @param filter 日時による絞り込み。null なら絞り込まない
-     */
-    public String listMessagesJson(String folder, int top, DateFilter filter) {
-        RequestInformation request = mailbox.mailFolders().byMailFolderId(folder).messages()
+    /** 一覧 API: GET .../mailFolders/{folder}/messages の応答 JSON。 */
+    public String listMessagesJson(MailSearchCriteria criteria) {
+        RequestInformation request = mailbox.mailFolders().byMailFolderId(criteria.folder()).messages()
                 .toGetRequestInformation(req -> {
                     req.queryParameters.select = LIST_SELECT;
-                    req.queryParameters.top = top;
-                    if (filter == null) {
-                        req.queryParameters.orderby = new String[]{"receivedDateTime desc"};
-                    } else {
-                        req.queryParameters.filter = filter.toODataFilter();
-                        // $filter と $orderby を併用する場合、$orderby のプロパティは $filter にも
-                        // 含まれている必要がある (異なると Graph が InefficientFilter エラーを返す)
-                        req.queryParameters.orderby = new String[]{filter.field().property() + " desc"};
-                    }
+                    req.queryParameters.top = criteria.top();
+                    req.queryParameters.filter = criteria.toODataFilter();
+                    req.queryParameters.orderby = new String[]{criteria.toODataOrderBy()};
                 });
         return send(request);
     }
