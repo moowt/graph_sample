@@ -55,21 +55,38 @@ public final class MailSearchCriteria {
         this.top = b.top;
     }
 
+    /**
+     * 既定値 (inbox・条件なし・新しい順・10 件) で初期化したビルダーを返す。
+     *
+     * @return ビルダー
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** 対象フォルダー (inbox, sentitems などのよく知られた名前、またはフォルダー ID)。 */
+    /**
+     * 対象フォルダーを返す。
+     *
+     * @return inbox, sentitems などのよく知られた名前、またはフォルダー ID
+     */
     public String folder() {
         return folder;
     }
 
-    /** 取得件数。 */
+    /**
+     * 取得件数を返す。
+     *
+     * @return 取得件数 (1〜100)
+     */
     public int top() {
         return top;
     }
 
-    /** $filter の式。条件が無ければ null。 */
+    /**
+     * 日時の条件を $filter の式に変換する。
+     *
+     * @return $filter の式 (例: {@code receivedDateTime ge 2026-10-01T00:00:00Z})。条件が無ければ null
+     */
     public String toODataFilter() {
         List<String> conditions = new ArrayList<>();
         if (since != null) {
@@ -82,14 +99,21 @@ public final class MailSearchCriteria {
     }
 
     /**
-     * $orderby の式。
+     * 並び順を $orderby の式に変換する。
      * $filter と併用する場合、$orderby のプロパティは $filter にも含まれている必要がある
      * (異なると Graph が 400 InefficientFilter を返す)。日時の条件と同じプロパティを使うことで満たしている。
+     *
+     * @return $orderby の式 (例: {@code receivedDateTime desc})
      */
     public String toODataOrderBy() {
         return DATE_PROPERTY + " " + sortOrder.direction;
     }
 
+    /**
+     * ログ・確認用に、Graph に渡すクエリの形で条件を表した文字列を返す。
+     *
+     * @return 条件の文字列表現
+     */
     @Override
     public String toString() {
         return "folder=" + folder + ", $filter=" + toODataFilter() + ", $orderby=" + toODataOrderBy() + ", $top=" + top;
@@ -106,42 +130,79 @@ public final class MailSearchCriteria {
         private Builder() {
         }
 
-        /** 対象フォルダー。既定は inbox。 */
+        /**
+         * 対象フォルダーを指定する。既定は inbox。
+         *
+         * @param folder inbox, sentitems などのよく知られた名前、またはフォルダー ID
+         * @return このビルダー
+         */
         public Builder folder(String folder) {
             this.folder = folder;
             return this;
         }
 
-        /** この日時以降のメール (指定日時を含む)。 */
+        /**
+         * この日時以降のメールに絞り込む (指定日時を含む)。
+         *
+         * @param since 開始日時。null なら下限なし
+         * @return このビルダー
+         */
         public Builder since(Instant since) {
             this.since = since;
             return this;
         }
 
-        /** この日時より前のメール (指定日時を含まない)。 */
+        /**
+         * この日時より前のメールに絞り込む (指定日時を含まない)。
+         *
+         * @param until 終了日時。null なら上限なし
+         * @return このビルダー
+         */
         public Builder until(Instant until) {
             this.until = until;
             return this;
         }
 
-        /** 現在から指定期間以内のメール。since を上書きする。 */
+        /**
+         * 現在から指定期間以内のメールに絞り込む。{@link #since(Instant)} の値を上書きする。
+         *
+         * @param period 期間 (例: {@code Duration.ofDays(7)})
+         * @return このビルダー
+         */
         public Builder withinLast(Duration period) {
             this.since = Instant.now().minus(period).truncatedTo(ChronoUnit.SECONDS);
             return this;
         }
 
-        /** 並び順。既定は新しい順。 */
+        /**
+         * 並び順を指定する。既定は新しい順。
+         *
+         * @param sortOrder 並び順
+         * @return このビルダー
+         */
         public Builder sortOrder(SortOrder sortOrder) {
             this.sortOrder = sortOrder;
             return this;
         }
 
-        /** 取得件数 (1〜100)。既定は 10。 */
+        /**
+         * 取得件数を指定する。既定は 10。
+         *
+         * @param top 取得件数 (1〜100)
+         * @return このビルダー
+         */
         public Builder top(int top) {
             this.top = top;
             return this;
         }
 
+        /**
+         * 指定内容を検証して検索条件を生成する。
+         *
+         * @return 検索条件
+         * @throws IllegalArgumentException folder / sortOrder が未指定、top が範囲外、
+         *                                  または since が until 以降の場合
+         */
         public MailSearchCriteria build() {
             if (folder == null || folder.isBlank()) {
                 throw new IllegalArgumentException("folder を指定してください。");

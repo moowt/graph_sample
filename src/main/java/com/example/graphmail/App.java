@@ -35,6 +35,14 @@ public final class App {
 
     private static final Gson PRETTY = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
+    private App() {
+    }
+
+    /**
+     * エントリーポイント。結果の JSON を標準出力に出し、エラー時は終了コード 1 で終了する。
+     *
+     * @param args コマンドライン引数 (クラスの説明を参照)
+     */
     public static void main(String[] args) {
         try {
             Options options = Options.parse(args);

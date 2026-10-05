@@ -49,6 +49,13 @@ public final class MailService {
         this.mailboxLabel = mailboxLabel;
     }
 
+    /**
+     * 認証モードに応じた対象メールボックスで MailService を生成する。
+     *
+     * @param client Graph クライアント
+     * @param config 設定 (認証モードと、client-secret モードでは target.user を使う)
+     * @return MailService
+     */
     public static MailService create(GraphServiceClient client, AppConfig config) {
         RequestAdapter adapter = client.getRequestAdapter();
         return switch (config.authMode()) {
@@ -65,12 +72,24 @@ public final class MailService {
         };
     }
 
-    /** 対象メールボックスの表示名 (確認用)。 */
+    /**
+     * 対象メールボックスの表示名を返す (確認用)。
+     * device-code モードでは /me を呼んで取得し、client-secret モードでは指定値をそのまま返す。
+     *
+     * @return 表示名
+     */
     public String describeMailbox() {
         return mailboxLabel.get();
     }
 
-    /** 一覧 API: GET .../mailFolders/{folder}/messages の応答 JSON。 */
+    /**
+     * 一覧 API (GET .../mailFolders/{folder}/messages) を呼び、応答 JSON をそのまま返す。
+     * 続きがある場合、応答の {@code @odata.nextLink} に次ページの URL が入る。
+     *
+     * @param criteria 検索条件
+     * @return 応答 JSON (整形前)
+     * @throws com.microsoft.graph.models.odataerrors.ODataError Graph API がエラーを返した場合
+     */
     public String listMessagesJson(MailSearchCriteria criteria) {
         RequestInformation request = mailbox.mailFolders().byMailFolderId(criteria.folder()).messages()
                 .toGetRequestInformation(req -> {
@@ -82,7 +101,14 @@ public final class MailService {
         return send(request);
     }
 
-    /** 個別取得 API: GET .../messages/{id} の応答 JSON (本文はテキスト形式)。 */
+    /**
+     * 個別取得 API (GET .../messages/{id}) を呼び、応答 JSON をそのまま返す。
+     * 全プロパティを取得し、本文はテキスト形式で返してもらう。
+     *
+     * @param messageId メッセージ ID (一覧の "id" の値)
+     * @return 応答 JSON (整形前)
+     * @throws com.microsoft.graph.models.odataerrors.ODataError Graph API がエラーを返した場合
+     */
     public String getMessageJson(String messageId) {
         RequestInformation request = mailbox.messages().byMessageId(messageId)
                 .toGetRequestInformation(req -> req.headers.add("Prefer", PREFER_TEXT_BODY));

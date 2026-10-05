@@ -21,6 +21,7 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 ```
 
 - テスト・Lint は未整備 (`src/test` なし、プラグインなし)。検証は実行して確認する。
+- Javadoc の確認: `mvn -B javadoc:javadoc -Dshow=public -DadditionalOptions=-Xdoclint:all` で警告が出ないこと (生成物 `target/reports` はコミット対象外)。
 - 実行にはカレントディレクトリの `config.properties` が必要 (`config.properties.example` をコピー。`.gitignore` 済みで、クライアントシークレット等を含むためコミットしない)。別ファイルは `--config PATH`。
 - `exec:java` の出力をパイプで受けると表示が遅れることがある。その場合は Java で直接起動する:
   `mvn -q dependency:build-classpath -Dmdep.outputFile=cp.txt && java -cp target/classes:$(cat cp.txt) com.example.graphmail.App`
@@ -64,6 +65,8 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 - 一覧は1リクエスト (最大100件) のみ。ページングとトークンの永続キャッシュは未実装 (実行ごとにサインインが必要)。
 
 ## 注意点
+
+- クラス・public メソッドには日本語の Javadoc を書く (概要に加え、`@param` / `@return` / 主な `@throws`)。
 
 - `AppConfig` は record のため、自動生成される `toString()` に `clientSecret` がそのまま含まれる。設定オブジェクトをログ出力しない。
 - 引数や設定キーを追加・変更したら、README の引数表・設定例と `config.properties.example` も更新する。
