@@ -12,24 +12,20 @@ Microsoft Graph Java SDK v6 と Azure Identity を使用し、HTTP やトーク�
 
 ```bash
 mvn -q compile                                              # ビルド (Java 17 / maven.compiler.release=17)
-mvn -q compile exec:java                                    # 一覧 API (受信トレイ最新10件)
-mvn -q compile exec:java -Dexec.args="--top 5 --folder sentitems"
-mvn -q compile exec:java -Dexec.args="--days 7 --order oldest"   # 直近7日を古い順に
-mvn -q compile exec:java -Dexec.args="--since 2026-10-01 --until 2026-10-05"
-mvn -q compile exec:java -Dexec.args="--id <メッセージID>"     # 個別取得 API
-mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret モードで対象メールボックスを上書き
+mvn -q compile exec:java                                    # 実行 (./config.properties の search.* に従い一覧 / 個別取得)
+mvn -q compile exec:java -Dexec.args="--config other.properties"   # 別の設定ファイル
 ```
 
 - テスト・Lint は未整備 (`src/test` なし、プラグインなし)。検証は実行して確認する。
 - Javadoc の確認: `mvn -B javadoc:javadoc -Dshow=public -DadditionalOptions=-Xdoclint:all` で警告が出ないこと (生成物 `target/reports` はコミット対象外)。
-- 実行にはカレントディレクトリの `config.properties` が必要 (`config.properties.example` をコピー。`.gitignore` 済みで、クライアントシークレット等を含むためコミットしない)。別ファイルは `--config PATH`。
+- 実行にはカレントディレクトリの `config.properties` が必要 (`config.properties.example` をコピー。`.gitignore` 済みで、クライアントシークレット等を含むためコミットしない)。別ファイルは `--config PATH` (引数はこれのみ。取得内容はすべて `search.*` で指定する)。
 - `exec:java` の出力をパイプで受けると表示が遅れることがある。その場合は Java で直接起動する:
   `mvn -q dependency:build-classpath -Dmdep.outputFile=cp.txt && java -cp target/classes:$(cat cp.txt) com.example.graphmail.App`
 - ログは slf4j-simple、既定レベル warn (`src/main/resources/simplelogger.properties`)。認証失敗時の `ClientAuthenticationException` には原因が載らず、`AADSTS` エラーコードは msal4j の WARN ログ行にだけ出る。
 
 ## アーキテクチャ
 
-処理の流れ: `App` (引数解析・表示) → `AppConfig.load` (設定読込・検証) → `GraphClientFactory.create` → `MailService.create` → メール取得。
+処理の流れ: `App` → `AppConfig.load` (設定読込・検証。`search.*` は `MailSearchCriteria` に変換) → `GraphClientFactory.create` → `MailService.create` → メール取得。
 
 設定は2つの直交する軸で決まり、どちらも `AppConfig` 内の enum で定義している。
 
@@ -59,7 +55,7 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 - 出力は Graph の応答 JSON をそのまま Gson で整形したもの。SDK のモデルには変換せず、SDK でリクエストを組み立てて (`toGetRequestInformation`)、`RequestAdapter.sendPrimitive(..., InputStream.class)` で生の応答を受け取る。エラー応答は `ERROR_MAPPING` で `ODataError` 例外に変換している。
 - 標準出力は JSON 専用。メールボックス名・絞り込み条件・デバイスコードの案内は標準エラー出力に出す (`System.out` に補足情報を足さない)。
 - 一覧は `LIST_SELECT` で `$select` を絞っている。個別取得は `$select` なし (全プロパティ)。本文は `Prefer: outlook.body-content-type="text"` でテキスト形式。
-- 一覧の検索条件は `MailSearchCriteria` (ビルダー) に集約し、`$filter` / `$orderby` / `$top` とフォルダーへの変換もここで行う。CLI 引数 (`--days` / `--since` / `--until` / `--order` / `--folder` / `--top`) は `App.Options.toCriteria()` で変換するだけ。条件を増やすときは `MailSearchCriteria` に追加する。
+- 一覧の検索条件は `MailSearchCriteria` (ビルダー) に集約し、`$filter` / `$orderby` / `$top` とフォルダーへの変換もここで行う。設定ファイルの `search.*` は `AppConfig.loadSearchCriteria()` で変換するだけ。条件を増やすときは `MailSearchCriteria` に追加し、対応する `search.*` キーを足す。`search.message-id` を指定すると一覧ではなく個別取得になる。
 - メールの日時は `receivedDateTime` に統一している (受信メールは受信日時、送信済みメールは送信日時が入る。Graph に受信・送信をまとめた専用の日時プロパティはない)。
 - `$filter` と `$orderby` を併用するときは、`$orderby` のプロパティが `$filter` にも含まれていないと Graph が `400 InefficientFilter` を返す。並び順を別プロパティにする場合は注意。
 - 一覧は1リクエスト (最大100件) のみ。ページングとトークンの永続キャッシュは未実装 (実行ごとにサインインが必要)。
@@ -69,5 +65,5 @@ mvn -q compile exec:java -Dexec.args="--user <UPN>"           # client-secret �
 - クラス・public メソッドには日本語の Javadoc を書く (概要に加え、`@param` / `@return` / 主な `@throws`)。
 
 - `AppConfig` は record のため、自動生成される `toString()` に `clientSecret` がそのまま含まれる。設定オブジェクトをログ出力しない。
-- 引数や設定キーを追加・変更したら、README の引数表・設定例と `config.properties.example` も更新する。
+- 設定キーを追加・変更したら、README の設定表・設定例と `config.properties.example` も更新する。
 - README には、アプリ登録手順、企業テナントでのメールボックス制限 (Exchange Online RBAC for Applications)、中国版の注意点、AADSTS エラーの対処表がある。
