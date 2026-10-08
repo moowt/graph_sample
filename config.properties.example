@@ -11,18 +11,20 @@ cloud=global
 
 # 認証モード
 #   client-secret : アプリケーションアクセス。サインイン不要 (企業テナント・管理者同意が必要)
+#   device-code   : 委任アクセス。ユーザーがブラウザでサインインし、自身のメールを読む (README の付録を参照)
 auth.mode=client-secret
 
 # Entra ID アプリ登録の「アプリケーション (クライアント) ID」
 client.id=00000000-0000-0000-0000-000000000000
 
 # Entra ID アプリ登録の「ディレクトリ (テナント) ID」
+#   device-code で個人の Microsoft アカウントを使う場合は consumers
 tenant.id=00000000-0000-0000-0000-000000000000
 
-# クライアントシークレットの「値」(シークレット ID ではない)
+# クライアントシークレットの「値」(シークレット ID ではない)。client-secret のみ使用
 client.secret=
 
-# 取得対象のメールボックス (UPN またはユーザー ID)
+# 取得対象のメールボックス (UPN またはユーザー ID)。client-secret のみ使用
 target.user=user@contoso.onmicrosoft.com
 
 # ============================================================

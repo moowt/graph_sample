@@ -5,6 +5,7 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 - **アプリケーションアクセス** (クライアント資格情報フロー) で、ユーザーのサインインなしに指定したメールボックスのメールを取得
 - 取得対象のメールボックスは、Exchange Online の **RBAC for Applications** でテナント側から限定可能
 - 接続先を **グローバル版 / 中国版 (21Vianet)** で切り替え可能
+- 参考として、サインインしたユーザー自身のメールを取得する **委任アクセス** (`/me`) にも対応 ([付録](#付録-委任アクセス-me-でサインインしたユーザー自身のメールを取得する))
 
 ## 構成
 
@@ -13,7 +14,7 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 | `App.java` | エントリーポイント。設定に応じて一覧 / 個別取得を行い、応答 JSON を出力 |
 | `AppConfig.java` | `config.properties` の読み込み・検証 (認証・接続先・取得内容)、接続先クラウド (グローバル版 / 中国版) の定義 |
 | `GraphClientFactory.java` | 資格情報・接続先クラウドに応じた `GraphServiceClient` の生成 |
-| `MailService.java` | メール取得 (`/users/{target.user}` のメールボックスを読む) |
+| `MailService.java` | メール取得 (`/users/{target.user}` のメールボックスを読む。委任アクセスでは `/me`) |
 | `MailSearchCriteria.java` | 一覧の検索条件 (フォルダー・期間・並び順・件数) |
 
 使用ライブラリ: [Microsoft Graph Java SDK](https://github.com/microsoftgraph/msgraph-sdk-java) v6、Azure Identity
@@ -271,4 +272,60 @@ target.user=user@contoso.partner.onmschina.cn
 
 - 取得件数は 1 回のリクエスト分 (最大 100) のみです。全件取得には `PageIterator` によるページングを追加します。
 - 新着のみ取得したい場合は `delta` クエリや `$filter=receivedDateTime ge ...` が利用できます。
-- コード上は委任アクセス (`auth.mode=device-code`、ユーザーがブラウザでサインインする方式) も残っていますが、本手順では扱いません。
+
+## 付録: 委任アクセス (`/me`) でサインインしたユーザー自身のメールを取得する
+
+アプリケーションアクセスの代わりに、ユーザーがブラウザでサインインし、**そのユーザー自身のメールボックス** を読む方式です
+(デバイスコードフロー)。個人の Microsoft アカウント (outlook.com など) はこちらの方式のみ対応しています。
+
+### 違い
+
+| | アプリケーションアクセス (本編) | 委任アクセス (付録) |
+|---|---|---|
+| `auth.mode` | `client-secret` | `device-code` |
+| サインイン | 不要 | **実行のたびに** ブラウザでサインインが必要 (トークンはメモリ上のみで保持) |
+| 読めるメールボックス | `target.user` で指定したメールボックス | サインインしたユーザー自身のみ |
+| 呼び出す API | `/users/{target.user}/...` | `/me/...` |
+| 必要なアクセス許可 | Microsoft Graph の **アプリケーションの許可** `Mail.Read` (または RBAC for Applications) | Microsoft Graph の **委任されたアクセス許可** `User.Read` / `Mail.Read` |
+
+取得内容の設定 (`search.*`) と出力形式は本編と同じです。
+
+### アプリ登録の追加設定
+
+本編の手順 1 のアプリ登録に、次を設定します。クライアントシークレットは不要です。
+
+1. **認証** (Authentication) → 設定 → **パブリック クライアント フローを許可する** を有効にして保存 (デバイスコードフローに必須)
+2. **API のアクセス許可** → Microsoft Graph → **委任されたアクセス許可** で `User.Read` (既定で追加済み) と `Mail.Read` を追加
+   - テナントの「ユーザーの同意」設定によっては、管理者の同意が必要です。
+3. 個人の Microsoft アカウントで使う場合のみ: **サポートされているアカウントの種類** を
+   「**任意の組織ディレクトリ内のアカウントと個人用 Microsoft アカウント**」にする
+   - `Property api.requestedAccessTokenVersion is invalid` で保存できない場合は、先に **マニフェスト** の
+     `"requestedAccessTokenVersion": null` を `2` に変えて保存してから変更します。
+
+### 設定ファイル
+
+```properties
+auth.mode=device-code
+client.id=<クライアントID>
+# 企業アカウント: テナント ID (または organizations) / 個人の Microsoft アカウント: consumers
+tenant.id=<テナントID>
+```
+
+`client.secret` と `target.user` は使いません。中国版 (`cloud=china`) では `consumers` は使えません。
+
+### 実行
+
+実行すると標準エラー出力に次のように表示されるので、ブラウザで URL を開いてコードを入力し、サインイン・同意します。
+
+```
+To sign in, use a web browser to open the page https://www.microsoft.com/link and enter the code XXXXXXXX to authenticate.
+```
+
+### よくあるエラー
+
+| エラー | 主な原因 |
+|---|---|
+| `AADSTS7000218` | 「パブリック クライアント フローを許可する」が無効のまま |
+| `AADSTS700016` (`tenant.id=consumers` 時) | アプリが個人アカウント非対応 (アカウントの種類が「この組織ディレクトリのみ」) |
+| `AADSTS50020` など (アカウントがテナントに存在しない) | サインインしたアカウントが `tenant.id` のテナントに属していない (個人アカウントは `consumers`) |
+| `AADSTS65001` | 同意が未実施。企業テナントでは管理者の同意が必要な場合あり |
