@@ -66,4 +66,4 @@ mvn -q compile exec:java -Dexec.args="--config other.properties"   # 別の設�
 
 - `AppConfig` は record のため、自動生成される `toString()` に `clientSecret` がそのまま含まれる。設定オブジェクトをログ出力しない。
 - 設定キーを追加・変更したら、README の設定表・設定例と `config.properties.example` も更新する。
-- README には、アプリ登録手順、企業テナントでのメールボックス制限 (Exchange Online RBAC for Applications)、中国版の注意点、AADSTS エラーの対処表がある。
+- README の手順はアプリケーションアクセス (`client-secret`) 前提で、アプリ登録・シークレット作成・アクセス権の付与 (Entra ID の許可 / Exchange Online RBAC for Applications)・中国版の注意点・AADSTS エラーの対処表がある。`device-code` (`/me`) は README 末尾の付録で補足的に扱う (本編を `device-code` 主体の書き方に戻さない)。
