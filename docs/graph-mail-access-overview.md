@@ -280,17 +280,52 @@ RBAC for Applications ではフォルダー単位に絞れないため、必要�
 
 ## 5. 参考: メール取得 API の補足
 
+### 5.1 主な API
+
 | 用途 | API |
 |---|---|
-| フォルダー内の一覧 | `GET /users/{UPN}/mailFolders/{folder}/messages` (`folder` は `inbox`、`sentitems` などの名前、またはフォルダー ID) |
+| フォルダー内の一覧 | `GET /users/{UPN}/mailFolders/{folder}/messages` (`folder` は `inbox`、`sentitems` などの既定の名前、またはフォルダー ID) |
 | メールボックス全体の一覧 | `GET /users/{UPN}/messages` (全フォルダーが対象) |
 | 個別取得 | `GET /users/{UPN}/messages/{id}` |
-| フォルダー一覧 | `GET /users/{UPN}/mailFolders` (本サンプルでは未実装) |
+| フォルダー一覧 (最上位) | `GET /users/{UPN}/mailFolders` |
+| サブフォルダー一覧 | `GET /users/{UPN}/mailFolders/{folder}/childFolders` |
 
-- **日時**: 受信・送信をまとめた専用の日時プロパティはない。
-  - `receivedDateTime` には、受信メールでは受信日時、送信済みメールでは送信日時 (送信済みアイテムに入った日時) が入るため、共通の「メールの日時」として使える。
-- **`$filter` と `$orderby` の併用**: `$orderby` のプロパティが `$filter` にも含まれていないと、`400 InefficientFilter` になる。
-- **受信トレイと送信済みアイテムをまとめて取得**: 1 回の呼び出しで取得できる。
+委任アクセスでは `/users/{UPN}` の代わりに `/me` を使う。本サンプルでは、フォルダー一覧・サブフォルダー一覧は未実装。
+
+### 5.2 フォルダーを指定した取得
+
+| 取得したいもの | API | 本サンプルの設定 |
+|---|---|---|
+| 受信トレイだけ | `GET /users/{UPN}/mailFolders/inbox/messages` | `search.folder=inbox` |
+| 送信済みアイテムだけ | `GET /users/{UPN}/mailFolders/sentitems/messages` | `search.folder=sentitems` |
+| 受信トレイのサブフォルダー | `GET /users/{UPN}/mailFolders/{サブフォルダーのID}/messages` | `search.folder=<サブフォルダーのID>` |
+
+- **送信トレイと送信済みアイテムは別のフォルダー**: 送ったメールが入るのは「送信済みアイテム」(`sentitems`)。「送信トレイ」(`outbox`) は送信待ちのメールが一時的に入るフォルダーで、通常は空。
+- **サブフォルダーは名前で指定できない**: 次の 2 段階で取得する。
+  1. `GET /users/{UPN}/mailFolders/inbox/childFolders` でサブフォルダーの一覧 (`displayName` と `id`) を取得し、目的のフォルダーの `id` を調べる。さらに下の階層は、そのフォルダーの `childFolders` を同様にたどる。
+  2. 調べた `id` を指定して、そのフォルダーのメールを取得する。
+
+**フォルダーを指定した取得では、サブフォルダーのメールは含まれない。**
+たとえば `inbox` を指定した場合に返るのは、受信トレイ直下のメールだけになる。
+
+```
+受信トレイ (inbox)            ← inbox を指定して取れるのはここだけ
+ ├─ メール A
+ ├─ メール B
+ └─ 案件 X (サブフォルダー)     ← 含まれない
+     └─ メール C
+```
+
+受信トレイとサブフォルダーをまとめて取得したい場合は、次のどちらかの方法をとる。
+
+| 方法 | 内容 | 特徴 |
+|---|---|---|
+| フォルダーごとに呼ぶ | `childFolders` でサブフォルダーをたどり、受信トレイと各サブフォルダーを順に取得して結合する | 呼び出し回数がフォルダー数だけ増える。並び順・件数の制御はアプリ側で行う |
+| メールボックス全体から絞る | `GET /users/{UPN}/messages` を `parentFolderId eq '{受信トレイのID}' or parentFolderId eq '{サブフォルダーのID}' ...` で絞る | 1 回の呼び出しで、並び順・件数・ページングを Graph 側に任せられる。対象フォルダーの ID は事前に調べておく |
+
+### 5.3 複数フォルダーをまとめた取得
+
+- **受信トレイと送信済みアイテム**: メールボックス全体の API を `parentFolderId` で絞れば、1 回の呼び出しで取得できる。
 
   ```
   GET /users/{UPN}/messages
@@ -299,8 +334,16 @@ RBAC for Applications ではフォルダー単位に絞れないため、必要�
     &$orderby=receivedDateTime desc
   ```
 
-  ただし、ユーザーが自分で作ったフォルダーや、受信トレイのサブフォルダーに移したメールは含まれない。
-- **削除済みアイテム・下書きを除いた全体の取得**: `isDraft eq false and parentFolderId ne '{削除済みアイテムのID}'` を付ける。
+  - 結果は、2 つのフォルダーのメールが日時順に混ざって返る。
+  - ただし、ユーザーが自分で作ったフォルダーや、受信トレイのサブフォルダーに移したメールは含まれない。
+  - 既定のフォルダーの ID は、`GET /users/{UPN}/mailFolders/inbox` のように既定の名前で取得できる。
+- **削除済みアイテム・下書きを除いた全体**: メールボックス全体の API に、`isDraft eq false and parentFolderId ne '{削除済みアイテムのID}'` を付ける。迷惑メールなど、その他のフォルダーは含まれる。
+
+### 5.4 日時と並び順
+
+- **日時**: 受信・送信をまとめた専用の日時プロパティはない。
+  - `receivedDateTime` には、受信メールでは受信日時、送信済みメールでは送信日時 (送信済みアイテムに入った日時) が入るため、共通の「メールの日時」として使える。
+- **`$filter` と `$orderby` の併用**: `$orderby` のプロパティが `$filter` にも含まれていないと、`400 InefficientFilter` になる。
 
 ---
 
