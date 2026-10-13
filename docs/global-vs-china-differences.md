@@ -83,7 +83,83 @@ Microsoft の公開情報に基づくため、導入前に公式ドキュメン�
 
 ---
 
-## 4. 本サンプルでの対応
+## 4. 実装上の留意点
+
+### 4.1 SDK は共通で使える
+
+グローバル版と中国版で、**同じ SDK・同じコードを使える**。中国版専用の SDK はない。
+
+| SDK | 中国版での使い方 |
+|---|---|
+| Microsoft Graph Java SDK (`microsoft-graph`) | 同じものを使う。接続先 (ベース URL) を中国版に設定する |
+| Azure Identity (`azure-identity`) | 同じものを使う。資格情報ごとに認証エンドポイント (`authorityHost`) を中国版に設定する |
+| メール取得などの API 呼び出し (リクエストビルダー) | 変更不要。ベース URL を設定すれば、同じコードで中国版の Graph に送られる |
+
+違いは「接続先の設定」と「中国版で提供されていない機能の扱い」に集約される。
+
+### 4.2 切り替えが必要な 3 点
+
+SDK の既定値はすべて **グローバル版** なので、中国版では次の 3 点を設定する。**3 点はそろえて切り替える** 必要があり、1 つでも食い違うと認証や API 呼び出しが失敗する。
+
+| # | 設定箇所 | グローバル版 (既定値) | 中国版 |
+|---|---|---|---|
+| 1 | 資格情報の `authorityHost` (認証エンドポイント) | `https://login.microsoftonline.com` | `https://login.chinacloudapi.cn` (`AzureAuthorityHosts.AZURE_CHINA`) |
+| 2 | Graph クライアントのベース URL | `https://graph.microsoft.com/v1.0` | `https://microsoftgraph.chinacloudapi.cn/v1.0` |
+| 3 | トークンのスコープ | `https://graph.microsoft.com/.default` | `https://microsoftgraph.chinacloudapi.cn/.default` |
+
+```java
+// 1. 認証エンドポイント: 資格情報のビルダーごとに設定する (シークレット・証明書・デバイスコードとも同じ)
+TokenCredential credential = new ClientSecretCredentialBuilder()
+        .clientId(clientId)
+        .tenantId(tenantId)
+        .clientSecret(secret)
+        .authorityHost(AzureAuthorityHosts.AZURE_CHINA)
+        .build();
+
+// 3. スコープ: 中国版の Graph リソースを指定する
+GraphServiceClient client = new GraphServiceClient(credential, "https://microsoftgraph.chinacloudapi.cn/.default");
+
+// 2. ベース URL: 中国版の Graph に向ける (API を呼ぶ前に設定する)
+client.getRequestAdapter().setBaseUrl("https://microsoftgraph.chinacloudapi.cn/v1.0");
+```
+
+- 3 点を 1 か所 (設定値や enum など) にまとめ、クラウドの指定 1 つで一緒に切り替わるようにしておくと、食い違いを防げる。
+- ベース URL は、`GraphServiceClient` のコンストラクターに `BaseGraphRequestAdapter.Clouds.CHINA_CLOUD` を渡して設定する方法もある。
+  - この場合は、認証プロバイダー (`AzureIdentityAuthenticationProvider`) と HTTP クライアントを自分で組み立てて渡す。
+- **委任アクセスのスコープ**: `Mail.Read` のような短縮形はグローバル版の Graph と解釈される。`https://microsoftgraph.chinacloudapi.cn/Mail.Read` のように、Graph のリソース URL を付けて指定する。
+- **認証ヘッダーの付与先**: Graph SDK は、許可された接続先 (`graph.microsoft.com`、`microsoftgraph.chinacloudapi.cn` など) にだけ `Authorization` ヘッダーを付ける。
+  - 中国版の Graph は最初から許可されているため、追加設定は不要。
+  - 独自のプロキシなど、一覧にない接続先を経由する場合は、許可する接続先を明示して認証プロバイダーを作る必要がある。
+
+### 4.3 URL・資格情報を共有しない
+
+- **URL を直書きしない**: コード中に `https://graph.microsoft.com` を直接書くと、中国版で動かない。
+  - URL は SDK のリクエストビルダーに組み立てさせる。
+  - 続きのページは、応答の `@odata.nextLink` (接続先と同じクラウドの URL が返る) をそのまま使う。
+- **アプリ登録・資格情報はクラウドごとに別**: クライアント ID、テナント ID、シークレット・証明書は、クラウドごとに用意する。
+- **トークンはクラウド間で使い回せない**: 1 つのアプリで両方のクラウドを扱う場合は、資格情報と Graph クライアントをクラウドごとに作る。
+
+### 4.4 機能差への備え
+
+- **中国版で提供されていない API がある**: たとえば、メールの差分取得 (delta) は中国版では使えない。
+  - 同じコードで両方の版に対応する場合は、クラウドに応じて処理を切り替える (例: 中国版では日時による取得にする)。
+  - 未提供の API を呼ぶと、エラー (400 / 404 など) になる。
+- **プロパティの反映が遅れることがある**: SDK のモデルはグローバル版の定義から生成されている。
+  - 中国版では、一部のプロパティが返らない (値が null になる) 可能性がある。
+  - 新しいプロパティに依存する処理や、`$select` で指定するプロパティは、中国版で動作を確認しておく。
+- **権限**: 使う権限 (`Mail.Read` など) が中国版のアプリ登録で選択できるかを確認しておく。
+
+### 4.5 実行環境・テスト
+
+- **ネットワーク**: ファイアウォールやプロキシで接続先を制限している環境では、中国版の接続先を許可する必要がある。
+  - 認証: `login.chinacloudapi.cn` (または `login.partner.microsoftonline.cn`)
+  - Graph: `microsoftgraph.chinacloudapi.cn`
+- **テスト**: 中国版の動作は、グローバル版のテナントでは確認できない。中国版のテナントとアプリ登録を用意して確認する。
+- **管理系の操作**: Exchange Online PowerShell は、`-ExchangeEnvironmentName O365China` を付けて中国版に接続する。
+
+---
+
+## 5. 本サンプルでの対応
 
 | 項目 | 対応内容 |
 |---|---|
@@ -97,7 +173,7 @@ Microsoft の公開情報に基づくため、導入前に公式ドキュメン�
 
 ---
 
-## 5. 中国版テナントで確認すべき事項
+## 6. 中国版テナントで確認すべき事項
 
 公開情報だけでは確定できないため、中国版テナントを用意したうえで、次の順に確認する。
 
