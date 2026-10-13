@@ -74,7 +74,7 @@ Graph API の呼び出しは、どの方式でも次の 2 段階で行う。
 
 ---
 
-## 2. メール取得周辺の権限 (`Mail.Read`)
+## 2. メール取得周辺の権限 (`Mail.Read` ほか)
 
 ### 2.1 `Mail.Read` の種類と読める範囲
 
@@ -99,6 +99,51 @@ Graph API の呼び出しは、どの方式でも次の 2 段階で行う。
 - Entra ID にユーザーを作っただけではメールボックスがなく、Graph でメールを読めない。
 - 共有メールボックスはライセンス不要で作成でき、`/users/{共有メールボックスのアドレス}/...` で同様に読める (テナントに Exchange Online のライセンスが 1 つ以上必要)。
 - Graph API の利用自体に追加料金はかからない。
+
+### 2.4 その他のメール関連の権限 (Microsoft Graph)
+
+`Mail.Read` 以外にも、読み取り範囲の狭いものから送信・変更までの権限がある。
+アプリケーション版はいずれも管理者の同意が必要で、既定では **テナント内の全メールボックス** が対象になる。
+
+| 権限 | 委任 | アプリ | できること | 備考 |
+|---|---|---|---|---|
+| `Mail.ReadBasic` | ○ | ○ | メールを読む。ただし **本文 (`body`)・プレビュー (`bodyPreview`)・添付ファイル・拡張プロパティは除く** | 件名・差出人・宛先・日時などのメタデータは読める。`hasAttachments` (添付の有無) も取得できる |
+| `Mail.ReadBasic.All` | - | ○ | 同上 (全メールボックス) | アプリケーション専用。アプリ版の `Mail.ReadBasic` と実質同じ内容で、追加された時期が違うだけとみられる |
+| `Mail.ReadBasic.Shared` | ○ | - | 同上 (自分に共有されたメールボックスも含む) | `uniqueBody` なども除外 |
+| `Mail.Read` | ○ | ○ | メールを読む (本文・添付ファイルを含む) | 本サンプルで使用 |
+| `Mail.Read.Shared` | ○ | - | 同上 (自分に共有されたメールボックスも含む) | 職場・学校アカウントのみ |
+| `Mail.ReadWrite` | ○ | ○ | 読み取りに加え、作成・更新・削除・フォルダー移動 | **送信は含まない** |
+| `Mail.ReadWrite.Shared` | ○ | - | 同上 (共有されたメールボックスも含む) | |
+| `Mail.Send` | ○ | ○ | ユーザーとしてメールを送信する | **アプリ版は組織内の任意のユーザーとして送信できる**。`Mail.ReadWrite` がなくても、送信済みアイテムへの保存は可能 |
+| `Mail.Send.Shared` | ○ | - | 共有メールボックスとして (または代理で) 送信 | |
+| `MailboxSettings.Read` / `.ReadWrite` | ○ | ○ | メールボックスの設定 (自動応答、タイムゾーン、言語、勤務時間など) の読み取り / 変更 | メールの内容は読めない |
+| `MailboxFolder.Read.All` / `MailboxItem.Read.All` など | - | ○ | Exchange 管理者向けのメールボックス インポート・エクスポート API (`/admin/exchange/mailboxes/...`) | 比較的新しい API。Exchange 管理者ロールが必要とする情報もあり、利用前に公式ドキュメントで要確認 |
+
+### 2.5 権限の選び方 (読み取り用途)
+
+必要最小限の権限を選ぶ。
+
+| 必要なもの | 選ぶ権限 |
+|---|---|
+| 件名・差出人・日時など、メールの一覧情報だけ | `Mail.ReadBasic` (アプリは `Mail.ReadBasic` / `Mail.ReadBasic.All`) |
+| 本文や添付ファイルも | `Mail.Read` |
+| 既読化・移動・削除などの変更 | `Mail.ReadWrite` (必要な場合のみ) |
+| 送信 | `Mail.Send` (必要な場合のみ。アプリ版は誰にでもなりすまして送信できるため、特に慎重に) |
+
+本サンプルの一覧は `bodyPreview`、個別取得は `body` を取得している。
+`Mail.ReadBasic` に切り替える場合は、`$select` からこれらを外すなどの見直しが必要になる (未検証)。
+
+### 2.6 Graph 以外の (プロトコル用の) 権限
+
+Graph API ではなく、従来のメールプロトコルで Exchange Online に接続するための権限もある。
+これらは Microsoft Graph ではなく、アプリ登録の「所属する組織で使用している API」→ **Office 365 Exchange Online** で追加する。
+
+| プロトコル | アプリケーション (クライアント資格情報) | 委任 | 備考 |
+|---|---|---|---|
+| IMAP | `IMAP.AccessAsApp` | `IMAP.AccessAsUser.All` | アプリ版は、管理者の同意に加えて `New-ServicePrincipal` での登録と、**メールボックスごとの権限付与** (`Add-MailboxPermission -AccessRights FullAccess`) が必要。そのため、最初からメールボックス単位で限定される |
+| POP | `POP.AccessAsApp` | `POP.AccessAsUser.All` | 同上 |
+| SMTP (送信) | `SMTP.SendAsApp` | `SMTP.Send` | 同上 |
+| EWS | `full_access_as_app` | `EWS.AccessAsUser.All` | **廃止予定**。Exchange Online では 2026 年 10 月 1 日から段階的に無効化され、2027 年 4 月 1 日に完全停止。新規開発では使わず、Graph を使う |
 
 ---
 
@@ -127,6 +172,9 @@ Graph API の呼び出しは、どの方式でも次の 2 段階で行う。
 - 設定は Exchange Online PowerShell で行う (管理画面の GUI では設定できない)。
 - 反映にはキャッシュの影響で 30 分〜2 時間程度かかることがある。
 - 制御できるのは Exchange のデータ (メール・予定表・連絡先など) だけで、Teams や SharePoint などは対象外。
+- `Mail.Read` 以外の権限にも、対応するロールがある。たとえば `Application Mail.ReadBasic`、`Application Mail.ReadWrite`、`Application Mail.Send`、`Application MailboxSettings.Read`、`Application EWS.AccessAsApp` など。
+  - 一覧は `Get-ManagementRole | Where-Object { $_.Name -like "Application *" }` で確認できる。
+  - 本文が不要なら、`Application Mail.ReadBasic` をスコープ付きで割り当てると、「対象メールボックス」と「読める項目」の両方を絞れる。
 
 ### 3.3 設定手順の概要
 
@@ -209,5 +257,19 @@ RBAC for Applications ではフォルダー単位に絞れないため、必要�
 | クライアントシークレット (Exchange Online Plan 1 テナント、`/users/{UPN}`) でのメール取得 | 検証済み |
 | Entra ID のアプリケーションの許可 `Mail.Read` + 管理者の同意での取得 | 検証済み |
 | RBAC for Applications による許可・拒否 | **未検証** (手順のみ整理) |
+| `Mail.ReadBasic` などその他の権限、IMAP / POP / SMTP の権限 | 未検証 (公開情報の整理のみ) |
 | 証明書による認証 | 未実装・未検証 |
 | 中国版 (21Vianet) での実接続・RBAC for Applications | 未検証 |
+
+---
+
+## 参考資料
+
+- [Microsoft Graph permissions reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [New basic read access to a users mailbox (Microsoft 365 Developer Blog)](https://devblogs.microsoft.com/microsoft365dev/new-basic-read-access-to-a-users-mailbox/)
+- [Role Based Access Control for Applications in Exchange Online](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+- [Limiting application permissions to specific Exchange Online mailboxes](https://github.com/microsoft/microsoft-graph-docs-1/blob/main/concepts/auth-limit-mailbox-access.md)
+- [Deprecation of Exchange Web Services in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-ews-exchange-online)
+- [MC1227454 - Exchange Web Services (EWS) retirement update](https://mc.merill.net/message/MC1227454)
+- [Exchange Online POP and IMAP OAuth 2.0 Client Credentials Flow (Icewolf Blog)](https://blog.icewolf.ch/archive/2022/12/17/exchange-online-pop-and-imap-oauth-2-0-client-credentials/)
+- [Graph Permissions Explorer (Merill)](https://graphpermissions.merill.net/permission/Mail.ReadBasic)
