@@ -15,20 +15,23 @@ import java.util.Properties;
 /**
  * config.properties から読み込む設定値。
  *
- * <p>record の {@code toString()} はすべての値を含むため、{@code clientSecret} が出力される点に注意。
+ * <p>record の {@code toString()} はすべての値を含むため、{@code clientSecret} や
+ * {@code certificatePassword} が出力される点に注意。
  *
  * @param cloud        接続先のクラウド (グローバル版 / 中国版)
  * @param authMode     認証モード
  * @param clientId     Entra ID アプリ登録のクライアント ID
  * @param tenantId     テナント ID (consumers / organizations などの特殊値を含む)
  * @param clientSecret クライアントシークレット (client-secret モードのみ。それ以外は null)
- * @param targetUser   取得対象のメールボックスの UPN またはユーザー ID (client-secret モードのみ。それ以外は null)
+ * @param certificatePath 証明書ファイルのパス (client-certificate モードのみ。それ以外は null)
+ * @param certificatePassword PFX 証明書のパスワード (client-certificate モードで PFX を使う場合のみ。無ければ null)
+ * @param targetUser   取得対象のメールボックスの UPN またはユーザー ID (アプリケーションアクセスのみ。それ以外は null)
  * @param searchCriteria 一覧 API の検索条件 (search.* から組み立てる)
  * @param messageId    個別取得するメッセージ ID (search.message-id)。null なら一覧を取得する
  */
 public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String tenantId,
-                        String clientSecret, String targetUser,
-                        MailSearchCriteria searchCriteria, String messageId) {
+                        String clientSecret, Path certificatePath, String certificatePassword,
+                        String targetUser, MailSearchCriteria searchCriteria, String messageId) {
 
     /** 接続先のクラウド。認証とGraphのエンドポイントがクラウドごとに異なる。 */
     public enum Cloud {
@@ -79,13 +82,24 @@ public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String 
     public enum AuthMode {
         /** 委任アクセス (ユーザーがサインイン)。個人アカウントはこちら。 */
         DEVICE_CODE("device-code"),
-        /** アプリケーションアクセス (サインインなし)。企業テナント専用。 */
-        CLIENT_SECRET("client-secret");
+        /** アプリケーションアクセス (サインインなし)。資格情報はクライアントシークレット。企業テナント専用。 */
+        CLIENT_SECRET("client-secret"),
+        /** アプリケーションアクセス (サインインなし)。資格情報は証明書。企業テナント専用。 */
+        CLIENT_CERTIFICATE("client-certificate");
 
         private final String key;
 
         AuthMode(String key) {
             this.key = key;
+        }
+
+        /**
+         * アプリケーションアクセス (サインインなしで /users/{id} を読む) かどうかを返す。
+         *
+         * @return client-secret / client-certificate なら true、device-code なら false
+         */
+        public boolean isApplication() {
+            return this != DEVICE_CODE;
         }
 
         static AuthMode of(String value) {
@@ -95,7 +109,7 @@ public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String 
                 }
             }
             throw new IllegalArgumentException(
-                    "auth.mode は device-code か client-secret を指定してください: " + value);
+                    "auth.mode は device-code / client-secret / client-certificate のいずれかを指定してください: " + value);
         }
     }
 
@@ -126,18 +140,35 @@ public record AppConfig(Cloud cloud, AuthMode authMode, String clientId, String 
             throw new IllegalStateException("中国版には個人用 Microsoft アカウントが無いため、tenant.id=consumers は使えません。");
         }
         String clientSecret = null;
+        Path certificatePath = null;
+        String certificatePassword = null;
         String targetUser = null;
 
-        if (mode == AuthMode.CLIENT_SECRET) {
+        if (mode.isApplication()) {
             if (isConsumerOrMultiTenant(tenantId)) {
                 throw new IllegalStateException(
-                        "client-secret モードでは tenant.id に企業テナントの ID を指定してください"
+                        "アプリケーションアクセス (" + mode.key + ") では tenant.id に企業テナントの ID を指定してください"
                         + " (consumers / common / organizations は不可)。");
             }
-            clientSecret = required(props, "client.secret");
             targetUser = required(props, "target.user");
         }
-        return new AppConfig(cloud, mode, clientId, tenantId, clientSecret, targetUser,
+        if (mode == AuthMode.CLIENT_SECRET) {
+            clientSecret = required(props, "client.secret");
+        }
+        if (mode == AuthMode.CLIENT_CERTIFICATE) {
+            certificatePath = Path.of(required(props, "client.certificate.path"));
+            if (!Files.isRegularFile(certificatePath)) {
+                throw new IllegalStateException("client.certificate.path の証明書ファイルが見つかりません: "
+                        + certificatePath.toAbsolutePath());
+            }
+            if (!CertificateFormat.isSupported(certificatePath)) {
+                throw new IllegalStateException(
+                        "client.certificate.path は .pem / .pfx / .p12 のいずれかを指定してください: " + certificatePath);
+            }
+            certificatePassword = optional(props, "client.certificate.password");
+        }
+        return new AppConfig(cloud, mode, clientId, tenantId, clientSecret, certificatePath, certificatePassword,
+                targetUser,
                 loadSearchCriteria(props), optional(props, "search.message-id"));
     }
 

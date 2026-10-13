@@ -2,6 +2,7 @@ package com.example.graphmail;
 
 import com.azure.core.credential.TokenCredential;
 import com.example.graphmail.AppConfig.Cloud;
+import com.azure.identity.ClientCertificateCredentialBuilder;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.identity.DeviceCodeCredentialBuilder;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
@@ -43,13 +44,35 @@ public final class GraphClientFactory {
                         .clientSecret(config.clientSecret())
                         .authorityHost(cloud.authorityHost())
                         .build();
-                // .default で、付与済みのアプリケーション許可をすべて使う
-                yield new GraphServiceClient(credential, cloud.graphEndpoint() + "/.default");
+                yield applicationClient(credential, cloud);
+            }
+            case CLIENT_CERTIFICATE -> {
+                // 証明書の秘密鍵で署名したアサーションを送る (秘密鍵そのものは送信しない)
+                ClientCertificateCredentialBuilder builder = new ClientCertificateCredentialBuilder()
+                        .clientId(config.clientId())
+                        .tenantId(config.tenantId())
+                        .authorityHost(cloud.authorityHost());
+                String path = config.certificatePath().toString();
+                switch (CertificateFormat.of(config.certificatePath())) {
+                    case PEM -> builder.pemCertificate(path);
+                    case PFX -> {
+                        builder.pfxCertificate(path);
+                        if (config.certificatePassword() != null) {
+                            builder.clientCertificatePassword(config.certificatePassword());
+                        }
+                    }
+                }
+                yield applicationClient(builder.build(), cloud);
             }
         };
         // SDK の既定はグローバル版の Graph なので、接続先を差し替える
         client.getRequestAdapter().setBaseUrl(cloud.graphEndpoint() + "/v1.0");
         return client;
+    }
+
+    /** アプリケーションアクセス用のクライアント。.default で、付与済みのアプリケーション許可をすべて使う。 */
+    private static GraphServiceClient applicationClient(TokenCredential credential, Cloud cloud) {
+        return new GraphServiceClient(credential, cloud.graphEndpoint() + "/.default");
     }
 
     /**

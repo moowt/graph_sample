@@ -13,7 +13,7 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 |---|---|
 | `App.java` | エントリーポイント。設定に応じて一覧 / 個別取得を行い、応答 JSON を出力 |
 | `AppConfig.java` | `config.properties` の読み込み・検証 (認証・接続先・取得内容)、接続先クラウド (グローバル版 / 中国版) の定義 |
-| `GraphClientFactory.java` | 資格情報・接続先クラウドに応じた `GraphServiceClient` の生成 |
+| `GraphClientFactory.java` | 資格情報 (シークレット / 証明書)・接続先クラウドに応じた `GraphServiceClient` の生成 |
 | `MailService.java` | メール取得 (`/users/{target.user}` のメールボックスを読む。委任アクセスでは `/me`) |
 | `MailSearchCriteria.java` | 一覧の検索条件 (フォルダー・期間・並び順・件数) |
 
@@ -21,7 +21,7 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 
 ### 処理の流れ
 
-1. クライアント ID とクライアントシークレットで Entra ID からアクセストークンを取得する (ユーザーのサインインは不要)
+1. クライアント ID と資格情報 (クライアントシークレットまたは証明書) で Entra ID からアクセストークンを取得する (ユーザーのサインインは不要)
 2. トークンを `Authorization: Bearer ...` ヘッダーに付けて Graph API を呼ぶ
 
 どちらもライブラリが行うため、コード上にトークン取得やヘッダー組み立ての処理はありません。
@@ -50,13 +50,57 @@ Microsoft Graph API でメールを取得する Java サンプル (ローカル�
 - アプリケーション (クライアント) ID
 - ディレクトリ (テナント) ID
 
-## 手順 2: クライアントシークレットの作成
+## 手順 2: 資格情報の作成
+
+アプリ自身を証明する資格情報を、次のどちらかで用意します。
+
+| 資格情報 | 特徴 | `auth.mode` |
+|---|---|---|
+| **2-A. クライアントシークレット** | ポータルで発行する文字列。準備は簡単だが、文字列が漏れると誰でもアプリになりすませる | `client-secret` |
+| **2-B. 証明書** | 秘密鍵で署名して認証する。秘密鍵は送信されず、シークレットより安全 (本番向け) | `client-certificate` |
+
+### 2-A. クライアントシークレット
 
 **証明書とシークレット** → **新しいクライアント シークレット** で作成します。
 
 - 作成直後に表示される **「値」** を控えます (隣の「シークレット ID」ではありません)。値は **この画面でしか表示されません**。
 - 有効期限が切れると認証できなくなります。検証用なら短めの期限にし、不要になったら削除してください。
-- 本番では、クライアントシークレットより証明書認証の利用を検討してください。
+
+### 2-B. 証明書
+
+1. 証明書 (秘密鍵と公開鍵のペア) を作成します。Entra ID は自己署名証明書で問題ありません。
+
+   OpenSSL の場合:
+
+   ```bash
+   # 秘密鍵 (key.pem) と証明書 (cert.crt) を作成 (有効期間 365 日)
+   openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.crt -days 365 -subj "/CN=graph-mail-sample"
+
+   # アプリで使うファイル: PEM (秘密鍵 + 証明書を 1 ファイルに結合)
+   cat key.pem cert.crt > app.pem
+
+   # PFX を使う場合 (パスワードで保護できる)
+   openssl pkcs12 -export -out app.pfx -inkey key.pem -in cert.crt
+   ```
+
+   Windows (PowerShell) の場合:
+
+   ```powershell
+   $cert = New-SelfSignedCertificate -Subject "CN=graph-mail-sample" -CertStoreLocation "Cert:\CurrentUser\My" `
+       -KeyExportPolicy Exportable -KeySpec Signature -KeyLength 2048 -NotAfter (Get-Date).AddYears(1)
+   Export-Certificate -Cert $cert -FilePath cert.cer                                        # アップロード用 (公開鍵のみ)
+   Export-PfxCertificate -Cert $cert -FilePath app.pfx -Password (Read-Host -AsSecureString) # アプリで使う (秘密鍵を含む)
+   ```
+
+2. アプリ登録の **証明書とシークレット** → **証明書** → **証明書のアップロード** で、**公開鍵のみのファイル** (`cert.crt` / `cert.cer`) をアップロードします。
+   - 秘密鍵を含むファイル (`key.pem` / `app.pem` / `app.pfx`) はアップロードしないでください。
+3. アプリで使うファイル (`app.pem` または `app.pfx`) を、実行環境に安全に置きます。
+
+注意点:
+
+- **PEM** は秘密鍵を暗号化せずに含むため、ファイルのアクセス権限を本人のみに制限してください (`chmod 600 app.pem` など)。パスワードで保護したい場合は **PFX** を使います。
+- 証明書にも有効期限があります。期限前に新しい証明書をアップロードし、アプリ側のファイルを差し替えてから古い証明書を削除すれば、止めずに切り替えられます (アプリ登録には複数の証明書を登録できます)。
+- 秘密鍵ファイルは `.gitignore` 済み (`*.pem` / `*.pfx` / `*.p12` / `*.key`) ですが、リポジトリの外に置くことを推奨します。
 
 ## 手順 3: メールボックスへのアクセス権の付与
 
@@ -115,13 +159,28 @@ Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource de
 cp config.properties.example config.properties
 ```
 
-`config.properties` を編集します (`.gitignore` 済み。シークレットを含むためコミットしないこと)。
+`config.properties` を編集します (`.gitignore` 済み。資格情報を含むためコミットしないこと)。
+
+クライアントシークレット (手順 2-A) の場合:
 
 ```properties
 auth.mode=client-secret
 client.id=<手順1のクライアントID>
 tenant.id=<手順1のテナントID>
-client.secret=<手順2のシークレットの値>
+client.secret=<手順2-Aのシークレットの値>
+target.user=user@contoso.onmicrosoft.com
+```
+
+証明書 (手順 2-B) の場合:
+
+```properties
+auth.mode=client-certificate
+client.id=<手順1のクライアントID>
+tenant.id=<手順1のテナントID>
+# PEM (秘密鍵 + 証明書) または PFX / P12
+client.certificate.path=/path/to/app.pem
+# PFX にパスワードを付けた場合のみ
+client.certificate.password=
 target.user=user@contoso.onmicrosoft.com
 ```
 
@@ -244,6 +303,7 @@ String json = mailService.listMessagesJson(criteria);
 
 ```properties
 cloud=china
+# client-certificate も可
 auth.mode=client-secret
 client.id=<中国版で登録したアプリのクライアントID>
 tenant.id=<中国版のテナントID>
@@ -264,6 +324,8 @@ target.user=user@contoso.partner.onmschina.cn
 | `AADSTS700016` / `AADSTS700038` | `client.id` の誤り、または `tenant.id` のテナントにアプリが存在しない |
 | `AADSTS7000215` (Invalid client secret) | `client.secret` の誤り (シークレット ID を設定している、値のコピー漏れなど) |
 | `AADSTS7000222` | クライアントシークレットの有効期限切れ。新しいシークレットを作成する |
+| `AADSTS700027` | 証明書がアプリ登録にアップロードされていない、または別の証明書を使っている (`client.certificate.path` を確認) |
+| `Failed to parse the certificate ... keystore password was incorrect` | `client.certificate.password` (PFX のパスワード) の誤り |
 | Graph API エラー `403 ErrorAccessDenied` | アクセス権が無い (手順 3-A の管理者の同意が未実施、または 3-B のスコープ外のメールボックス) |
 | Graph API エラー `MailboxNotEnabledForRESTAPI` など | `target.user` に Exchange Online のメールボックスが無い (ライセンス未割り当て、作成直後で未反映) |
 | Graph API エラー `400 ErrorInvalidIdMalformed` | `search.message-id` の値が不正 |

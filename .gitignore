@@ -1,6 +1,11 @@
 target/
 # 認証情報を含むため絶対にコミットしない
 config.properties
+# 証明書・秘密鍵
+*.pem
+*.pfx
+*.p12
+*.key
 .idea/
 *.iml
 .vscode/
