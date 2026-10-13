@@ -35,8 +35,9 @@ mvn -q compile exec:java -Dexec.args="--config other.properties"   # 別の設�
 |---|---|---|
 | `device-code` | 委任 (`DeviceCodeCredential`) | `/me/...` |
 | `client-secret` | アプリケーション (`ClientSecretCredential`) | `/users/{target.user}/...` |
+| `client-certificate` | アプリケーション (`ClientCertificateCredential`。PEM / PFX は拡張子で `CertificateFormat` が判定) | `/users/{target.user}/...` |
 
-- 個人 Microsoft アカウントは委任のみ対応 (`tenant.id=consumers`)。`client-secret` では `consumers`/`common`/`organizations` を起動時に拒否する。
+- 個人 Microsoft アカウントは委任のみ対応 (`tenant.id=consumers`)。アプリケーションアクセス (`AuthMode.isApplication()` が true のモード) では `consumers`/`common`/`organizations` を起動時に拒否する。
 - モードを追加する場合、`GraphClientFactory.create` と `MailService.create` の `switch` 式 (default なし) を両方更新する。漏れるとコンパイルエラーになる。
 - SDK 6.x では `client.me()` も `client.users().byUserId(id)` も `UserItemRequestBuilder` を返す。`MailService` はこれを利用し、取得処理を共通化している。モードによって変わるのは、対象メールボックスとその表示名の取り方だけ。
 
@@ -64,6 +65,6 @@ mvn -q compile exec:java -Dexec.args="--config other.properties"   # 別の設�
 
 - クラス・public メソッドには日本語の Javadoc を書く (概要に加え、`@param` / `@return` / 主な `@throws`)。
 
-- `AppConfig` は record のため、自動生成される `toString()` に `clientSecret` がそのまま含まれる。設定オブジェクトをログ出力しない。
+- `AppConfig` は record のため、自動生成される `toString()` に `clientSecret` / `certificatePassword` がそのまま含まれる。設定オブジェクトをログ出力しない。
 - 設定キーを追加・変更したら、README の設定表・設定例と `config.properties.example` も更新する。
-- README の手順はアプリケーションアクセス (`client-secret`) 前提で、アプリ登録・シークレット作成・アクセス権の付与 (Entra ID の許可 / Exchange Online RBAC for Applications)・中国版の注意点・AADSTS エラーの対処表がある。`device-code` (`/me`) は README 末尾の付録で補足的に扱う (本編を `device-code` 主体の書き方に戻さない)。
+- README の手順はアプリケーションアクセス (`client-secret` / `client-certificate`) 前提で、アプリ登録・資格情報 (シークレット / 証明書) の作成・アクセス権の付与 (Entra ID の許可 / Exchange Online RBAC for Applications)・中国版の注意点・AADSTS エラーの対処表がある。`device-code` (`/me`) は README 末尾の付録で補足的に扱う (本編を `device-code` 主体の書き方に戻さない)。

@@ -53,7 +53,7 @@ public final class MailService {
      * 認証モードに応じた対象メールボックスで MailService を生成する。
      *
      * @param client Graph クライアント
-     * @param config 設定 (認証モードと、client-secret モードでは target.user を使う)
+     * @param config 設定 (認証モードと、アプリケーションアクセスでは target.user を使う)
      * @return MailService
      */
     public static MailService create(GraphServiceClient client, AppConfig config) {
@@ -67,14 +67,14 @@ public final class MailService {
             // アプリケーションアクセス: 指定ユーザーのメールボックス。
             // Mail.Read のみ付与している場合 /users/{id} の読み取り権限 (User.Read.All) が無いため、
             // ユーザー情報は取得せず指定値をそのまま表示する
-            case CLIENT_SECRET -> new MailService(
+            case CLIENT_SECRET, CLIENT_CERTIFICATE -> new MailService(
                     adapter, client.users().byUserId(config.targetUser()), config::targetUser);
         };
     }
 
     /**
      * 対象メールボックスの表示名を返す (確認用)。
-     * device-code モードでは /me を呼んで取得し、client-secret モードでは指定値をそのまま返す。
+     * device-code モードでは /me を呼んで取得し、アプリケーションアクセスでは指定値をそのまま返す。
      *
      * @return 表示名
      */
