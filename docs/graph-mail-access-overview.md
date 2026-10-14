@@ -275,6 +275,7 @@ RBAC for Applications ではフォルダー単位に絞れないため、必要�
 
 - 中国版で RBAC for Applications が使えるかを明記した公開情報は、確認できなかった。
 - 中国版テナントで `New-ServicePrincipal` などのコマンドや `Application Mail.Read` ロールが存在するかを確認し、必要に応じて 21Vianet のサポートに問い合わせる。
+- グローバル版と中国版の差分全般は、[グローバル版と中国版 (21Vianet) の差分](global-vs-china-differences.md) を参照。
 
 ---
 

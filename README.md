@@ -313,7 +313,10 @@ target.user=user@contoso.partner.onmschina.cn
 
 - テナント・アカウント・アプリ登録はグローバル版と **別物** です。アプリ登録は中国版の Azure ポータル (https://portal.azure.cn) で行い、グローバル版のクライアント ID は使えません。
 - Exchange Online PowerShell は `Connect-ExchangeOnline -ExchangeEnvironmentName O365China` で接続します。
+  - RBAC for Applications の設定コマンド (手順 3-B) は同じで、接続方法だけが異なります。ただし、中国版で RBAC for Applications が使えるかは要確認です。
 - Graph API や Exchange の機能 (RBAC for Applications など) は、グローバル版と提供状況が異なる場合があります。利用前に中国版のドキュメントで確認してください。
+  - たとえば、メールの差分取得 (`delta` クエリ) は中国版では使えません。
+- グローバル版との差分の詳細と、実装上の留意点は [docs/global-vs-china-differences.md](docs/global-vs-china-differences.md) を参照してください。
 
 ## トラブルシューティング
 
@@ -334,6 +337,7 @@ target.user=user@contoso.partner.onmschina.cn
 
 - 取得件数は 1 回のリクエスト分 (最大 100) のみです。全件取得には `PageIterator` によるページングを追加します。
 - 新着のみ取得したい場合は `delta` クエリや `$filter=receivedDateTime ge ...` が利用できます。
+  - 中国版ではメールの `delta` クエリが使えないため、`$filter=receivedDateTime ge ...` による取得を使います。
 
 ## 付録: 委任アクセス (`/me`) でサインインしたユーザー自身のメールを取得する
 
