@@ -75,6 +75,35 @@ Microsoft の公開情報に基づくため、導入前に公式ドキュメン�
 - 中国版でメールボックスを絞る手段が使えない場合、アプリケーションアクセスでは全メールボックスが読める状態になる。
   - その場合は、委任アクセスを使う、専用のメールボックスに必要なメールを集めて運用でカバーする、などの代替策を検討する必要がある。
 
+#### RBAC for Applications の設定コマンドの違い
+
+中国版で RBAC for Applications が使える場合、設定コマンド自体はグローバル版と同じ想定である。
+主に違うのは、**Exchange Online PowerShell への接続方法** と、**指定する ID・ドメイン** である。
+
+| 手順 | グローバル版 | 中国版 (21Vianet) |
+|---|---|---|
+| PowerShell への接続 | `Connect-ExchangeOnline` | `Connect-ExchangeOnline -ExchangeEnvironmentName O365China` (**ここが異なる**) |
+| サービスプリンシパルの登録 | `New-ServicePrincipal -AppId ... -ObjectId ...` | 同じコマンド。ID は中国版テナントのアプリ登録・エンタープライズ アプリケーションの値を使う (`portal.azure.cn` で確認) |
+| スコープの作成 | `New-ManagementScope -RecipientRestrictionFilter ...` | 同じコマンド |
+| ロールの割り当て | `New-ManagementRoleAssignment -App ... -Role "Application Mail.Read" ...` | 同じコマンド |
+| 確認 | `Test-ServicePrincipalAuthorization ...` | 同じコマンド |
+| メールボックスの指定例 | `user@contoso.onmicrosoft.com` | `user@contoso.partner.onmschina.cn` |
+
+```powershell
+# 中国版: 接続だけが異なり、以降のコマンドはグローバル版と同じ
+Connect-ExchangeOnline -ExchangeEnvironmentName O365China
+
+New-ServicePrincipal -AppId <中国版アプリのクライアントID> -ObjectId <中国版エンタープライズアプリのオブジェクトID> -DisplayName "graph-mail-sample"
+New-ManagementScope -Name "GraphMailAllowed" -RecipientRestrictionFilter "CustomAttribute1 -eq 'GraphMailAllowed'"
+New-ManagementRoleAssignment -App <中国版アプリのクライアントID> -Role "Application Mail.Read" -CustomResourceScope "GraphMailAllowed"
+```
+
+- **コマンドとロールが中国版に存在するかは要確認**: 中国版で RBAC for Applications が使えるかを明記した公式情報はない。設定の前に、必要なコマンドとロールがあるかを確認する (6 章の手順 2)。
+- **設定作業を自動化する場合**: スクリプトがアプリ専用認証で PowerShell に接続するときは、中国版では接続パラメーターの追加が必要とされている。
+  - また、この構成は「利用はできるがサポート対象外」とされている。
+  - 管理者が手動でサインインして設定する場合は関係しない。
+- **管理単位でスコープを決める場合**: `-RecipientAdministrativeUnitScope` を使うときは、中国版の Entra ID で管理単位が使えるかも別途確認する。
+
 ### 3.4 その他
 
 | 項目 | グローバル版 | 中国版 (21Vianet) |
