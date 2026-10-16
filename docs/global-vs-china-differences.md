@@ -122,7 +122,9 @@ New-ManagementRoleAssignment -App <中国版アプリのクライアントID> -R
 |---|---|
 | Microsoft Graph Java SDK (`microsoft-graph`) | 同じものを使う。接続先 (ベース URL) を中国版に設定する |
 | Azure Identity (`azure-identity`) | 同じものを使う。資格情報ごとに認証エンドポイント (`authorityHost`) を中国版に設定する |
-| メール取得などの API 呼び出し (リクエストビルダー) | 変更不要。ベース URL を設定すれば、同じコードで中国版の Graph に送られる |
+
+メール取得などの API を呼ぶコード (`client.users().byUserId(id).messages().get()` など) は変更不要である。
+SDK はベース URL に続くパス (`/users/{id}/messages` など) だけを組み立てるため、ベース URL を中国版に設定すれば、同じコードで中国版の Graph に送られる。
 
 違いは「接続先の設定」と「中国版で提供されていない機能の扱い」に集約される。
 
