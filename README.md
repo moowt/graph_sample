@@ -131,7 +131,10 @@ Exchange Online PowerShell で実行します。
 
 ```powershell
 Install-Module ExchangeOnlineManagement   # 初回のみ
-Connect-ExchangeOnline
+Connect-ExchangeOnline                     # ブラウザで管理者としてサインイン
+
+# 0. 組織のカスタマイズを有効化 (テナントで初回のみ。新しいテナントでは必須)
+if ((Get-OrganizationConfig).IsDehydrated) { Enable-OrganizationCustomization }
 
 # 1. アプリのサービスプリンシパルを Exchange に登録
 #    ObjectId は「エンタープライズ アプリケーション」側のオブジェクト ID (アプリ登録のオブジェクト ID ではない)
@@ -152,6 +155,22 @@ Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource de
 - 反映までキャッシュにより **30 分〜2 時間程度** かかることがあります。
 - 検証用の「許可しない」メールボックスには、ライセンス不要の **共有メールボックス** が使えます。
 - 対象を部署単位で管理したい場合は、`-CustomResourceScope` の代わりに管理単位 (`-RecipientAdministrativeUnitScope`) も使えます。
+
+**つまずきやすい点**
+
+- **組織のカスタマイズの有効化 (手順 0)**: 新しいテナントでは、`New-ManagementScope` が
+  「`Enable-OrganizationCustomization` を先に実行する必要がある」というエラーで失敗します。
+  - `Enable-OrganizationCustomization` は、テナントへの反映に時間がかかります (数十分〜数時間)。
+  - 実行直後に同じエラーが出る場合は、時間を置いてから手順 2 以降を再実行してください。
+- **PowerShell へのサインイン方法**: PC のブラウザでサインインする、通常の `Connect-ExchangeOnline` を使います。
+  - デバイスコード方式 (`Connect-ExchangeOnline -Device`) は、セキュリティの既定値群が有効なテナントではブロックされ、`AADSTS530035` になります (2026 年 7 月以降に作成されたテナントは既定でブロック)。
+  - PC がなくデバイスコード方式を使う場合は、作業中だけセキュリティの既定値群を一時的に無効にし、終わったらすぐに有効に戻します (検証用テナントに限ってください)。
+- **3-A の許可の外し方**: アプリ登録の **API のアクセス許可** で、`Mail.Read` の行の「…」から **管理者の同意を取り消す** → **アクセス許可の削除** の順に行います。
+  - 削除だけでは付与済みの同意が残ることがあります。**エンタープライズ アプリケーション** → アプリ → **アクセス許可** に `Mail.Read` が残っていないことを確認してください。
+- **RBAC で読めていることの確認**:
+  - `Test-ServicePrincipalAuthorization` で、許可したメールボックスが `InScope = True`、それ以外が `False` になること。
+  - アプリで、許可したメールボックスは取得でき、それ以外は `403 ErrorAccessDenied` になること。
+  - 3-A の許可を外した後のアクセストークンに、`roles` クレーム (Entra ID のアプリケーションの許可) が含まれないこと。
 
 ## 手順 4: 設定ファイル
 
@@ -330,6 +349,8 @@ target.user=user@contoso.partner.onmschina.cn
 | `AADSTS700027` | 証明書がアプリ登録にアップロードされていない、または別の証明書を使っている (`client.certificate.path` を確認) |
 | `Failed to parse the certificate ... keystore password was incorrect` | `client.certificate.password` (PFX のパスワード) の誤り |
 | Graph API エラー `403 ErrorAccessDenied` | アクセス権が無い (手順 3-A の管理者の同意が未実施、または 3-B のスコープ外のメールボックス) |
+| `AADSTS530035` (`Connect-ExchangeOnline -Device` 時) | セキュリティの既定値群により、デバイスコード方式のサインインがブロックされている。PC のブラウザで通常の `Connect-ExchangeOnline` を使う |
+| `New-ManagementScope`: `... you first need to run the command: Enable-OrganizationCustomization` | 組織のカスタマイズが未有効、または有効化の反映待ち。`Enable-OrganizationCustomization` を実行し、時間を置いて再実行する |
 | Graph API エラー `MailboxNotEnabledForRESTAPI` など | `target.user` に Exchange Online のメールボックスが無い (ライセンス未割り当て、作成直後で未反映) |
 | Graph API エラー `400 ErrorInvalidIdMalformed` | `search.message-id` の値が不正 |
 
