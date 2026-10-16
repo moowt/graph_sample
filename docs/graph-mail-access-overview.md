@@ -237,6 +237,9 @@ Graph API の呼び出しは、どの方式でも次の 2 段階で行う。
 ```powershell
 Connect-ExchangeOnline
 
+# 0. 組織のカスタマイズを有効化 (テナントで初回のみ。新しいテナントでは必須)
+if ((Get-OrganizationConfig).IsDehydrated) { Enable-OrganizationCustomization }
+
 # 1. アプリのサービスプリンシパルを Exchange に登録
 #    ObjectId は「エンタープライズ アプリケーション」側のオブジェクト ID (アプリ登録のオブジェクト ID ではない)
 New-ServicePrincipal -AppId <クライアントID> -ObjectId <エンタープライズアプリのオブジェクトID> -DisplayName "<表示名>"
@@ -260,6 +263,13 @@ Test-ServicePrincipalAuthorization -Identity <クライアントID> -Resource al
 | 管理単位 (Administrative Unit) | `-RecipientAdministrativeUnitScope` | 部署単位の管理に向く。管理単位の機能に Entra ID P1 などが必要になる場合がある |
 
 検証時は、拒否確認用にライセンス不要の共有メールボックスを使うと費用がかからない。
+
+設定時の注意点:
+
+- **組織のカスタマイズの有効化**: 新しいテナントでは、スコープの作成 (`New-ManagementScope`) の前に `Enable-OrganizationCustomization` が必要。テナントへの反映に数十分〜数時間かかることがある。
+- **サインイン方法**: Exchange Online PowerShell へは、ブラウザでの通常のサインインで接続する。デバイスコード方式 (`-Device`) は、セキュリティの既定値群が有効なテナントではブロックされる (`AADSTS530035`)。
+- **Entra ID の許可の外し方**: 「管理者の同意を取り消す」→「アクセス許可の削除」の順に行い、エンタープライズ アプリケーションのアクセス許可に残っていないことを確認する。
+- **RBAC で読めていることの確認**: Entra ID の許可を外した後のアクセストークンには `roles` クレームが含まれない。その状態で読めるメールボックスは、RBAC で許可したものだけになる。
 
 ### 4.4 フォルダー単位で絞りたい場合の代替案
 
