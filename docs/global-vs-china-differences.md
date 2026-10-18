@@ -83,6 +83,7 @@ Microsoft の公開情報に基づくため、導入前に公式ドキュメン�
 | 手順 | グローバル版 | 中国版 (21Vianet) |
 |---|---|---|
 | PowerShell への接続 | `Connect-ExchangeOnline` | `Connect-ExchangeOnline -ExchangeEnvironmentName O365China` (**ここが異なる**) |
+| 組織のカスタマイズの有効化 (新しいテナントで初回のみ) | `Enable-OrganizationCustomization` | 同じコマンド |
 | サービスプリンシパルの登録 | `New-ServicePrincipal -AppId ... -ObjectId ...` | 同じコマンド。ID は中国版テナントのアプリ登録・エンタープライズ アプリケーションの値を使う (`portal.azure.cn` で確認) |
 | スコープの作成 | `New-ManagementScope -RecipientRestrictionFilter ...` | 同じコマンド |
 | ロールの割り当て | `New-ManagementRoleAssignment -App ... -Role "Application Mail.Read" ...` | 同じコマンド |
@@ -93,6 +94,7 @@ Microsoft の公開情報に基づくため、導入前に公式ドキュメン�
 # 中国版: 接続だけが異なり、以降のコマンドはグローバル版と同じ
 Connect-ExchangeOnline -ExchangeEnvironmentName O365China
 
+if ((Get-OrganizationConfig).IsDehydrated) { Enable-OrganizationCustomization }
 New-ServicePrincipal -AppId <中国版アプリのクライアントID> -ObjectId <中国版エンタープライズアプリのオブジェクトID> -DisplayName "graph-mail-sample"
 New-ManagementScope -Name "GraphMailAllowed" -RecipientRestrictionFilter "CustomAttribute1 -eq 'GraphMailAllowed'"
 New-ManagementRoleAssignment -App <中国版アプリのクライアントID> -Role "Application Mail.Read" -CustomResourceScope "GraphMailAllowed"
