@@ -124,7 +124,9 @@ New-ManagementRoleAssignment -App <中国版アプリのクライアントID> -R
 |---|---|
 | Microsoft Graph Java SDK (`microsoft-graph`) | 同じものを使う。接続先 (ベース URL) を中国版に設定する |
 | Azure Identity (`azure-identity`) | 同じものを使う。資格情報ごとに認証エンドポイント (`authorityHost`) を中国版に設定する |
-| メール取得などの API 呼び出し (リクエストビルダー) | 変更不要。ベース URL を設定すれば、同じコードで中国版の Graph に送られる |
+
+メール取得などの API を呼ぶコード (`client.users().byUserId(id).messages().get()` など) は変更不要である。
+SDK はベース URL に続くパス (`/users/{id}/messages` など) だけを組み立てるため、ベース URL を中国版に設定すれば、同じコードで中国版の Graph に送られる。
 
 違いは「接続先の設定」と「中国版で提供されていない機能の扱い」に集約される。
 
@@ -168,7 +170,6 @@ client.getRequestAdapter().setBaseUrl("https://microsoftgraph.chinacloudapi.cn/v
   - URL は SDK のリクエストビルダーに組み立てさせる。
   - 続きのページは、応答の `@odata.nextLink` (接続先と同じクラウドの URL が返る) をそのまま使う。
 - **アプリ登録・資格情報はクラウドごとに別**: クライアント ID、テナント ID、シークレット・証明書は、クラウドごとに用意する。
-- **トークンはクラウド間で使い回せない**: 1 つのアプリで両方のクラウドを扱う場合は、資格情報と Graph クライアントをクラウドごとに作る。
 
 ### 4.4 機能差への備え
 
